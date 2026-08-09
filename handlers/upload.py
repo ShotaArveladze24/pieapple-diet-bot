@@ -1,5 +1,6 @@
 """PDF upload is disabled unless AI extraction is configured."""
 
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
@@ -83,11 +84,11 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             file = await document.get_file()
             await file.download_to_drive(custom_path=str(temp_file))
 
-        pdf_text = pdf_extractor.extract_text(str(temp_file))
+        pdf_text = await asyncio.to_thread(pdf_extractor.extract_text, str(temp_file))
         if not pdf_text.strip():
             raise ValueError("Extracted PDF text is empty")
 
-        plan = claude_client.extract_plan(pdf_text)
+        plan = await asyncio.to_thread(claude_client.extract_plan, pdf_text)
         summary = _format_summary(plan)
         await update.message.reply_text(
             "PDF extracted successfully. Here is the parsed plan summary:\n\n" + summary
