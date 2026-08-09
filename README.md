@@ -1,8 +1,8 @@
 # PieappleDietBot
 
-Personal Telegram bot: manage your meal plan manually with SQLite-backed storage, and ask the bot
-about your meals (today's dish, recipe, substitutions, nutrition). PDF upload, URL import,
-and Google Calendar sync are disabled.
+Personal Telegram bot: manage your meal plan with SQLite-backed storage, import a weekly plan
+from a PDF via Claude, and ask the bot about your meals (today's dish, recipe, substitutions,
+nutrition). URL import and Google Calendar sync are disabled.
 
 The bot only responds to authorized Telegram accounts (`OWNER_TELEGRAM_ID` /
 `EXTRA_TELEGRAM_IDS` in `.env`) — everyone else is silently ignored.
@@ -14,7 +14,8 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the full list of configuration para
 - Python 3.11+
 - A Telegram bot registered in [@BotFather](https://t.me/BotFather) as `@PieappleDietBot`
   (the token was already issued — see step 2)
-- No external AI API key or Google Calendar access is required for the current bot.
+- An Anthropic API key if you want PDF plan upload; not required otherwise. No Google
+  Calendar access is required for the current bot.
 
 ## 2. Install
 
@@ -32,11 +33,13 @@ Copy `.env.example` to `.env` and fill in:
 - `OWNER_TELEGRAM_ID` — your numeric Telegram user id. If you don't know it, leave it
   blank, run the bot (step 6), send it `/start`, and it will reply with your id. Put
   that id in `.env` and restart the bot.
+- `ANTHROPIC_API_KEY` — your Claude API key, needed for PDF plan upload. Leave it unset
+  and the bot just replies that PDF upload is disabled.
 
 ## 4. External AI / Google Calendar support
 
-This bot currently has PDF upload, URL import, Claude AI extraction, and Google Calendar
-sync disabled. Use the manual recipe commands instead:
+PDF upload uses Claude to extract a structured plan (see `ANTHROPIC_API_KEY` above). URL
+import and Google Calendar sync remain disabled — use the manual recipe commands instead:
 
 - `/addrecipe`
 - `/replace_recipe`
@@ -56,8 +59,8 @@ The bot polls Telegram for updates; keep this process running while you want to 
 
 ## 6. Using the bot
 
-- PDF upload is disabled (AI extraction was removed) — the bot replies telling you to
-  use the manual commands instead.
+- Send a PDF (weekly plan or single recipe) — the bot extracts it with Claude and shows
+  you a summary of the parsed plan.
 - `/today` — today's breakfast/lunch/dinner, with buttons for recipe details,
   substitution, and nutrition info.
 - `/week` — the full week's plan with recipe links.
@@ -67,9 +70,9 @@ The bot polls Telegram for updates; keep this process running while you want to 
 
 ## 7. Deploying on a Raspberry Pi 5 (always-on)
 
-The bot is lightweight (Telegram polling + SQLite) — a Pi 5 with 8GB RAM is comfortably
-more than enough. Moving to the Pi just makes it always-on instead of only running while
-your PC does.
+The bot is lightweight (Telegram polling + SQLite + occasional Anthropic API calls for PDF
+upload) — a Pi 5 with 8GB RAM is comfortably more than enough. Moving to the Pi just makes
+it always-on instead of only running while your PC does.
 
 1. **Raspberry Pi OS**: use the 64-bit version. Confirm Python 3.11+ is available
    (`python3 --version`); if needed: `sudo apt update && sudo apt install python3-venv python3-pip`.
