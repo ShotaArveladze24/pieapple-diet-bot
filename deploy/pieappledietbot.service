@@ -1,0 +1,15 @@
+[Unit]
+Description=PieappleDietBot Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pieapple-diet-bot
+ExecStart=/home/pi/pieapple-diet-bot/.venv/bin/python bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
