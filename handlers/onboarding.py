@@ -15,6 +15,7 @@ LANGUAGE_NAMES = {"en": "English", "it": "Italiano", "es": "Espanol"}
 HELP_TEXT = (
     "Available commands:\n"
     "/today - today's meals\n"
+    "/tomorrow - tomorrow's meals\n"
     "/week - this week's plan\n"
     "/recipes - list saved recipes, with link editing\n"
     "/recipe_details <id> - ingredients, quantities, instructions and nutrition for a recipe\n"
@@ -28,8 +29,7 @@ HELP_TEXT = (
     "/clear_future - delete future days' recipes\n"
     "/language - change the recipe content language (EN/IT/ES)\n"
     "/report - adherence to the plan this week\n\n"
-    "Send a PDF with a nutrition plan or a recipe to add it.\n"
-    "Send a URL to import a recipe from a web page.\n"
+    "Use /addrecipe to add meals manually.\n"
     "Just write what you ate to log it."
 )
 

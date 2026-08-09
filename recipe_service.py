@@ -3,8 +3,6 @@
 import json
 import sqlite3
 
-import claude_client
-
 _LANG_COLUMNS = {"it": "link_it", "es": "link_es", "en": "link_en"}
 _LINK_PRIORITY = ("link_it", "link_es", "link_en")
 
@@ -69,18 +67,11 @@ def update_nutrition(conn: sqlite3.Connection, recipe_id: int, calories: int, ma
 
 
 def link_meal_to_recipe(conn: sqlite3.Connection, dish_name: str, language: str, link: str | None) -> int:
-    """Finds or creates the shared recipe for this dish name (case-insensitive match, so
-    an existing recipe is always kept rather than duplicated). The given link (if any) is
-    stored only under the detected/given language, overwriting whatever was there before.
-    If there's no explicit link and this is a brand-new recipe, does a single web search in
-    that language as a fallback. Other languages are left for /add_link to fill in."""
-    recipe_id, is_new = get_or_create_recipe(conn, dish_name)
+    """Finds or creates the shared recipe for this dish name.
+    The given link (if any) is stored under the detected/given language."""
+    recipe_id, _ = get_or_create_recipe(conn, dish_name)
 
     if link:
         set_link_for_language(conn, recipe_id, language, link)
-    elif is_new:
-        found = claude_client.find_recipe_link(dish_name, language)
-        if found:
-            set_link_for_language(conn, recipe_id, language, found)
 
     return recipe_id

@@ -1,11 +1,8 @@
-"""/replace_recipe: swap in an existing library recipe for a given date/meal slot,
-syncing Google Calendar. Unlike /substitute (which asks Claude to invent an
-alternative), this picks from recipes you already have."""
+"""/replace_recipe: swap in an existing library recipe for a given date/meal slot."""
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-import calendar_service
 import meal_service
 import recipe_service
 from access_control import owner_only
@@ -102,28 +99,11 @@ async def _apply_replacement(update: Update, context: ContextTypes.DEFAULT_TYPE,
             recipe_link=link,
         )
         meal_service.apply_recipe_choice(conn, meal_id, recipe, link)
-        calendar_event_id = None
         prefix = "Nothing was scheduled there — added"
     else:
         meal_id = existing_meal["id"]
         meal_service.apply_recipe_choice(conn, meal_id, recipe, link)
-        calendar_event_id = existing_meal["calendar_event_id"]
         prefix = "Replaced with"
-
-    try:
-        if calendar_event_id:
-            calendar_service.update_event(
-                calendar_event_id, recipe["name"], "", pending["meal_type"],
-                recipe_id=recipe["id"], link=link,
-            )
-        else:
-            event_id = calendar_service.create_event(
-                pending["date"], pending["meal_type"], recipe["name"], "",
-                recipe_id=recipe["id"], link=link,
-            )
-            meal_service.set_calendar_event_id(conn, meal_id, event_id)
-    except Exception as exc:
-        await update.message.reply_text(f"Warning: Calendar sync failed: {exc}")
 
     await update.message.reply_text(
         f"{prefix} {recipe['name']} for {label} on {pending['date']}."

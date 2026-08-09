@@ -1,22 +1,12 @@
-"""/today and /week: browse the plan with recipe links."""
+"""/today, /tomorrow and /week: browse the plan."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import claude_client
 import meal_service
 from i18n import meal_type_label, t
-
-
-def _ensure_recipe_link(conn, meal) -> str | None:
-    if meal["recipe_link"]:
-        return meal["recipe_link"]
-    link = claude_client.find_recipe_link(meal["dish_name"], "en")
-    if link:
-        meal_service.update_recipe_link(conn, meal["id"], link)
-    return link
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -34,15 +24,37 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     for meal in meals:
-        link = _ensure_recipe_link(conn, meal)
         label = meal_type_label(meal["meal_type"])
         text = f"{label}: {meal['dish_name']}"
-        if link:
-            text += f"\n{link}"
+        if meal["recipe_link"]:
+            text += f"\n{meal['recipe_link']}"
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t("recipe_button"), callback_data=f"recipe_{meal['id']}"),
-            InlineKeyboardButton(t("substitute_button"), callback_data=f"substitute_{meal['id']}"),
-            InlineKeyboardButton(t("nutrition_button"), callback_data=f"nutrition_{meal['id']}"),
+        ]])
+        await update.message.reply_text(text, reply_markup=keyboard)
+
+
+async def tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = context.bot_data["conn"]
+    tomorrow_date = (date.today() + timedelta(days=1)).isoformat()
+
+    if meal_service.is_day_off(conn, tomorrow_date):
+        await update.message.reply_text("Tomorrow is a day off: no meals planned.")
+        return
+
+    meals = meal_service.list_meals_for_date(conn, tomorrow_date)
+
+    if not meals:
+        await update.message.reply_text("No meals are scheduled for tomorrow.")
+        return
+
+    for meal in meals:
+        label = meal_type_label(meal["meal_type"])
+        text = f"{label}: {meal['dish_name']}"
+        if meal["recipe_link"]:
+            text += f"\n{meal['recipe_link']}"
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t("recipe_button"), callback_data=f"recipe_{meal['id']}"),
         ]])
         await update.message.reply_text(text, reply_markup=keyboard)
 

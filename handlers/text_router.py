@@ -8,8 +8,6 @@ from handlers import day_off, recipe_library, replace_recipe, tracking, upload, 
 
 
 async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if await upload.try_handle_week_change(update, context):
-        return
     if await day_off.try_handle_dayoff_step(update, context):
         return
     if await recipe_library.try_handle_link_edit(update, context):

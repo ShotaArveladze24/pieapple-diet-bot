@@ -3,8 +3,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import calendar_service
-import claude_client
 import meal_service
 import recipe_service
 import settings_service
@@ -27,18 +25,10 @@ async def handle_substitute_request(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
     await query.message.reply_text("Looking for an alternative...")
 
-    language = settings_service.get_content_language(conn) or "en"
-    suggestion = claude_client.suggest_substitution(meal["dish_name"], language, constraints)
-    context.user_data[f"pending_sub_{meal_id}"] = suggestion
-
-    ingredients_text = "\n".join(f"- {item}" for item in suggestion.get("ingredients", []))
-    text = f"Suggested alternative: {suggestion['dish_name']}\n\n{ingredients_text}\n\n{suggestion.get('instructions', '')}"
-
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("Confirm", callback_data=f"subconfirm_{meal_id}"),
-        InlineKeyboardButton("Cancel", callback_data=f"subcancel_{meal_id}"),
-    ]])
-    await query.message.reply_text(text, reply_markup=keyboard)
+    await query.answer()
+    await query.message.reply_text(
+        "Substitution is not available without AI integration. Use /replace_recipe or /addrecipe instead."
+    )
 
 
 @owner_only
@@ -64,32 +54,8 @@ async def handle_substitute_confirm(update: Update, context: ContextTypes.DEFAUL
         suggestion.get("macros"),
     )
 
-    language = settings_service.get_content_language(conn) or "en"
-    recipe_id = None
-    calendar_link = suggestion.get("recipe_link")
-    try:
-        recipe_id = recipe_service.link_meal_to_recipe(
-            conn, suggestion["dish_name"], language, suggestion.get("recipe_link")
-        )
-        meal_service.set_recipe_id(conn, meal_id, recipe_id)
-        recipe = recipe_service.get_recipe(conn, recipe_id)
-        if recipe:
-            calendar_link = recipe_service.pick_display_link(recipe) or calendar_link
-    except Exception as exc:
-        await query.message.reply_text(f"Warning: recipe lookup failed: {exc}")
-
-    if meal["calendar_event_id"]:
-        try:
-            calendar_service.update_event(
-                meal["calendar_event_id"], suggestion["dish_name"],
-                suggestion.get("description") or "", meal["meal_type"],
-                recipe_id=recipe_id, link=calendar_link,
-            )
-        except Exception as exc:
-            await query.message.reply_text(f"Warning: Calendar update failed: {exc}")
-
     await query.answer()
-    await query.edit_message_text(f"Substituted with: {suggestion['dish_name']}")
+    await query.edit_message_text("Substitution was cancelled or is unavailable.")
 
 
 @owner_only

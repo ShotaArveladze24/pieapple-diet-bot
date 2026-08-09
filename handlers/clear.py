@@ -5,7 +5,6 @@ from datetime import date
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import calendar_service
 import meal_service
 from access_control import owner_only
 
@@ -22,8 +21,7 @@ async def _start_clear(update: Update, context: ContextTypes.DEFAULT_TYPE, scope
         InlineKeyboardButton("Cancel", callback_data="clear_cancel"),
     ]])
     await update.message.reply_text(
-        f"About to delete {len(meals)} meals on {label} days "
-        "(and their Calendar events). Confirm?",
+        f"About to delete {len(meals)} meals on {label} days. Confirm?",
         reply_markup=keyboard,
     )
 
@@ -53,23 +51,15 @@ async def handle_clear_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
 
     conn = context.bot_data["conn"]
     deleted = 0
-    calendar_failures = 0
     for meal_id in pending["meal_ids"]:
         meal = meal_service.get_meal(conn, meal_id)
         if meal is None:
             continue
-        if meal["calendar_event_id"]:
-            try:
-                calendar_service.delete_event(meal["calendar_event_id"])
-            except Exception:
-                calendar_failures += 1
         meal_service.delete_meal(conn, meal_id)
         deleted += 1
 
     await query.answer()
     text = f"Deleted {deleted} meals."
-    if calendar_failures:
-        text += f"\n({calendar_failures} Calendar events could not be removed.)"
     await query.edit_message_text(text)
 
 

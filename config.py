@@ -16,14 +16,4 @@ for _raw_id in os.environ.get("EXTRA_TELEGRAM_IDS", "").split(","):
     if _raw_id:
         ALLOWED_TELEGRAM_IDS.add(int(_raw_id))
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-
-GOOGLE_CLIENT_SECRETS_PATH = os.environ.get("GOOGLE_CLIENT_SECRETS_PATH", "client_secret.json")
-GOOGLE_TOKEN_PATH = os.environ.get("GOOGLE_TOKEN_PATH", "token.json")
-GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/pieapple.db")
-
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
-
-TIMEZONE = os.environ.get("TIMEZONE", "Europe/Rome")

@@ -1,8 +1,8 @@
 # PieappleDietBot
 
-Personal Telegram bot: upload a nutrition-plan PDF (Italian, Spanish or English), get a
-structured weekly meal plan synced to Google Calendar, and ask the bot about your meals
-(today's dish, recipe, substitutions, nutrition) or tell it what you actually ate.
+Personal Telegram bot: manage your meal plan manually with SQLite-backed storage, and ask the bot
+about your meals (today's dish, recipe, substitutions, nutrition). PDF upload, URL import,
+and Google Calendar sync are disabled.
 
 The bot only responds to authorized Telegram accounts (`OWNER_TELEGRAM_ID` /
 `EXTRA_TELEGRAM_IDS` in `.env`) — everyone else is silently ignored.
@@ -14,8 +14,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the full list of configuration para
 - Python 3.11+
 - A Telegram bot registered in [@BotFather](https://t.me/BotFather) as `@PieappleDietBot`
   (the token was already issued — see step 2)
-- An Anthropic API key from [console.anthropic.com](https://console.anthropic.com)
-- A Google account, for the Calendar integration (step 4)
+- No external AI API key or Google Calendar access is required for the current bot.
 
 ## 2. Install
 
@@ -35,28 +34,18 @@ Copy `.env.example` to `.env` and fill in:
   that id in `.env` and restart the bot.
 - `ANTHROPIC_API_KEY` — your Claude API key.
 
-## 4. Set up Google Calendar access
+## 4. External AI / Google Calendar support
 
-The bot writes events to your primary Google Calendar via OAuth (no server-side secrets
-beyond your own Google account):
+This bot currently has PDF upload, URL import, Claude AI extraction, and Google Calendar
+sync disabled. Use the manual recipe commands instead:
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project
-   (or reuse one).
-2. In **APIs & Services > Library**, enable the **Google Calendar API**.
-3. In **APIs & Services > Credentials**, click **Create Credentials > OAuth client ID**.
-   - If prompted, configure the OAuth consent screen first (choose "External", add
-     yourself as a test user — this is fine for personal use).
-   - Application type: **Desktop app**.
-4. Download the resulting JSON and save it as `client_secret.json` in this project folder
-   (the filename is referenced by `GOOGLE_CLIENT_SECRETS_PATH` in `.env`).
-5. Run the one-time consent script — it opens a browser window for you to sign in and
-   approve access, then caches a refresh token locally:
-
-   ```bash
-   python setup_google_auth.py
-   ```
-
-   This creates `token.json`. You won't need to repeat this unless you delete that file.
+- `/addrecipe`
+- `/replace_recipe`
+- `/recipes`
+- `/recipe_details <id>`
+- `/today`
+- `/tomorrow`
+- `/week`
 
 ## 5. Run
 

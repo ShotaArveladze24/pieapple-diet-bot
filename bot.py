@@ -44,6 +44,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", onboarding.start))
     application.add_handler(CommandHandler("help", onboarding.help_command, filters=owner_filter))
     application.add_handler(CommandHandler("today", plan_query.today, filters=owner_filter))
+    application.add_handler(CommandHandler("tomorrow", plan_query.tomorrow, filters=owner_filter))
     application.add_handler(CommandHandler("week", plan_query.week, filters=owner_filter))
     application.add_handler(CommandHandler("report", tracking.report, filters=owner_filter))
     application.add_handler(CommandHandler("recipes", recipe_library.list_recipes, filters=owner_filter))
@@ -68,11 +69,6 @@ def build_application() -> Application:
         MessageHandler(filters.Document.PDF & owner_filter, upload.handle_pdf)
     )
 
-    application.add_handler(CallbackQueryHandler(upload.handle_confirm, pattern=r"^upload_confirm$"))
-    application.add_handler(CallbackQueryHandler(upload.handle_cancel, pattern=r"^upload_cancel$"))
-    application.add_handler(
-        CallbackQueryHandler(upload.handle_change_week_request, pattern=r"^upload_changeweek$")
-    )
     application.add_handler(CallbackQueryHandler(recipe_detail.handle_recipe, pattern=r"^recipe_\d+$"))
     application.add_handler(
         CallbackQueryHandler(substitution.handle_substitute_request, pattern=r"^substitute_\d+$")

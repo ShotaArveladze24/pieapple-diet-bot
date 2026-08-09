@@ -8,11 +8,11 @@ MEAL_TYPE_LABELS = {
 }
 
 STRINGS = {
-    "confirm_button": "Confirm and sync to Calendar",
+    "confirm_button": "Confirm",
     "recipe_button": "Recipe",
     "substitute_button": "I don't like it / Substitute",
     "nutrition_button": "Nutrition facts",
-    "plan_saved": "Plan saved and synced to Google Calendar.",
+    "plan_saved": "Plan saved.",
     "no_meals_today": "No meals planned for today.",
 }
 

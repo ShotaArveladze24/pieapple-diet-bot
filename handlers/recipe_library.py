@@ -10,8 +10,12 @@ import unicodedata
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import calendar_service
-import claude_client
+import json
+import unicodedata
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
+
 import meal_service
 import recipe_service
 import settings_service
@@ -102,14 +106,6 @@ async def try_handle_link_edit(update: Update, context: ContextTypes.DEFAULT_TYP
     new_link = None if text == "-" else text
     meal_service.update_recipe_link(conn, meal_id, new_link)
 
-    if meal and meal["calendar_event_id"]:
-        try:
-            calendar_service.update_event(
-                meal["calendar_event_id"], meal["dish_name"], new_link or "", meal["meal_type"]
-            )
-        except Exception as exc:
-            await update.message.reply_text(f"Warning: Calendar update failed: {exc}")
-
     await update.message.reply_text("Link updated." if new_link else "Link removed.")
     return True
 
@@ -146,20 +142,6 @@ async def _finalize_new_recipe(update: Update, context: ContextTypes.DEFAULT_TYP
         meal_service.set_recipe_id(conn, meal_id, recipe_id)
     except Exception as exc:
         await update.message.reply_text(f"Warning: recipe lookup failed: {exc}")
-
-    calendar_link = pending.get("link")
-    if recipe_id:
-        recipe = recipe_service.get_recipe(conn, recipe_id)
-        if recipe:
-            calendar_link = recipe_service.pick_display_link(recipe) or calendar_link
-    try:
-        event_id = calendar_service.create_event(
-            pending["date"], pending["meal_type"], pending["dish_name"], "",
-            recipe_id=recipe_id, link=calendar_link,
-        )
-        meal_service.set_calendar_event_id(conn, meal_id, event_id)
-    except Exception as exc:
-        await update.message.reply_text(f"Warning: Calendar sync failed: {exc}")
 
     confirmation = f"Recipe added: {pending['dish_name']} ({pending['date']})."
     if recipe_id:
@@ -301,16 +283,7 @@ async def try_handle_rename_recipe(update: Update, context: ContextTypes.DEFAULT
     meal_service.rename_meals_for_recipe(conn, recipe_id, new_name)
 
     for meal in meal_service.list_meals_for_recipe(conn, recipe_id):
-        if meal["calendar_event_id"]:
-            try:
-                calendar_service.update_event(
-                    meal["calendar_event_id"], new_name, meal["description"] or "", meal["meal_type"],
-                    recipe_id=recipe_id,
-                )
-            except Exception:
-                pass
-
-    await update.message.reply_text(f"Recipe #{recipe_id} renamed to '{new_name}'.")
+        await update.message.reply_text(f"Recipe #{recipe_id} renamed to '{new_name}'.")
     return True
 
 
@@ -330,24 +303,23 @@ async def recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
     instructions = recipe["instructions"]
     if not ingredients or not instructions:
-        language = settings_service.get_content_language(conn) or "en"
-        details = claude_client.generate_recipe_details(recipe["name"], language)
-        ingredients = details["ingredients"]
-        instructions = details["instructions"]
-        recipe_service.update_details(conn, recipe_id, ingredients, instructions)
+        details_text = "Detailed ingredients and instructions are not available."
+        await update.message.reply_text(
+            f"Recipe #{recipe_id}: {recipe['name']}\n\n" + details_text
+        )
+        return
 
     if recipe["calories"] and recipe["macros_json"]:
         calories = recipe["calories"]
         macros = json.loads(recipe["macros_json"])
+        nutrition_text = (
+            f"\n\nCalories: {calories} kcal\n"
+            f"Protein: {macros.get('protein_g', '?')} g\n"
+            f"Carbs: {macros.get('carbs_g', '?')} g\n"
+            f"Fat: {macros.get('fat_g', '?')} g"
+        )
     else:
-        estimate = claude_client.estimate_nutrition(recipe["name"], ingredients)
-        calories = estimate["calories"]
-        macros = {
-            "protein_g": estimate["protein_g"],
-            "carbs_g": estimate["carbs_g"],
-            "fat_g": estimate["fat_g"],
-        }
-        recipe_service.update_nutrition(conn, recipe_id, calories, macros)
+        nutrition_text = "\n\nNutrition information is not available."
 
     ingredients_text = "\n".join(f"- {item}" for item in ingredients)
     text = (
