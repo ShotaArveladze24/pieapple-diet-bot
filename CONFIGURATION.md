@@ -11,7 +11,6 @@ SQLite database are all gitignored.
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Your bot's API token | [@BotFather](https://t.me/BotFather) on Telegram |
 | `OWNER_TELEGRAM_ID` | Your numeric Telegram user id; the primary/first authorized user, and who receives error notifications | Message [@userinfobot](https://t.me/userinfobot), or run the bot and send it `/start` with this unset — it will reply with your id |
-| `ANTHROPIC_API_KEY` | Claude API key, used for PDF/URL parsing, recipe search, substitutions, nutrition estimates | [console.anthropic.com](https://console.anthropic.com) |
 
 ## Optional parameters
 
@@ -22,7 +21,6 @@ SQLite database are all gitignored.
 | `GOOGLE_TOKEN_PATH` | `token.json` | Path to the cached OAuth refresh token, created by `setup_google_auth.py` |
 | `GOOGLE_CALENDAR_ID` | `primary` | Which Google Calendar to write meal events to. Use a specific calendar's id (found under that calendar's Settings > Integrate calendar > Calendar ID) to keep meal events off your main calendar |
 | `DATABASE_PATH` | `data/pieapple.db` | SQLite database file path |
-| `CLAUDE_MODEL` | `claude-sonnet-5` | Anthropic model id used for all Claude calls |
 | `TIMEZONE` | `Europe/Rome` | IANA timezone used when creating Calendar events (e.g. `America/New_York`). Separate from the host machine's system timezone, which the bot also relies on for "today"/day-off/next-Monday logic — make sure the two agree |
 
 ## Files you must provide (not environment variables)
@@ -37,7 +35,6 @@ SQLite database are all gitignored.
 ```
 TELEGRAM_BOT_TOKEN=123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 OWNER_TELEGRAM_ID=123456789
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Everything else falls back to its default. Add `GOOGLE_CALENDAR_ID`, `EXTRA_TELEGRAM_IDS`,

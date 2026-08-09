@@ -32,7 +32,6 @@ Copy `.env.example` to `.env` and fill in:
 - `OWNER_TELEGRAM_ID` — your numeric Telegram user id. If you don't know it, leave it
   blank, run the bot (step 6), send it `/start`, and it will reply with your id. Put
   that id in `.env` and restart the bot.
-- `ANTHROPIC_API_KEY` — your Claude API key.
 
 ## 4. External AI / Google Calendar support
 
@@ -57,9 +56,8 @@ The bot polls Telegram for updates; keep this process running while you want to 
 
 ## 6. Using the bot
 
-- Send a PDF (weekly plan or single recipe) — the bot extracts it with Claude, shows you
-  a summary, and on confirmation saves it and creates Google Calendar events for each
-  meal.
+- PDF upload is disabled (AI extraction was removed) — the bot replies telling you to
+  use the manual commands instead.
 - `/today` — today's breakfast/lunch/dinner, with buttons for recipe details,
   substitution, and nutrition info.
 - `/week` — the full week's plan with recipe links.
@@ -69,10 +67,9 @@ The bot polls Telegram for updates; keep this process running while you want to 
 
 ## 7. Deploying on a Raspberry Pi 5 (always-on)
 
-The bot is lightweight (Telegram polling + SQLite + occasional HTTPS calls) — a Pi 5
-with 8GB RAM is comfortably more than enough. It still calls the Anthropic and Google
-APIs over the internet as it does on your PC; nothing runs "more locally" by moving to
-the Pi, this just makes it always-on instead of only running while your PC does.
+The bot is lightweight (Telegram polling + SQLite) — a Pi 5 with 8GB RAM is comfortably
+more than enough. Moving to the Pi just makes it always-on instead of only running while
+your PC does.
 
 1. **Raspberry Pi OS**: use the 64-bit version. Confirm Python 3.11+ is available
    (`python3 --version`); if needed: `sudo apt update && sudo apt install python3-venv python3-pip`.
