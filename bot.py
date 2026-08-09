@@ -22,7 +22,9 @@ from handlers import (
     plan_query,
     recipe_detail,
     recipe_library,
+    remove,
     replace_recipe,
+    reschedule,
     substitution,
     text_router,
     tracking,
@@ -46,6 +48,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("today", plan_query.today, filters=owner_filter))
     application.add_handler(CommandHandler("tomorrow", plan_query.tomorrow, filters=owner_filter))
     application.add_handler(CommandHandler("week", plan_query.week, filters=owner_filter))
+    application.add_handler(CommandHandler("agenda", plan_query.agenda, filters=owner_filter))
     application.add_handler(CommandHandler("report", tracking.report, filters=owner_filter))
     application.add_handler(CommandHandler("recipes", recipe_library.list_recipes, filters=owner_filter))
     application.add_handler(
@@ -60,6 +63,10 @@ def build_application() -> Application:
     application.add_handler(
         CommandHandler("replace_recipe", replace_recipe.replace_recipe_start, filters=owner_filter)
     )
+    application.add_handler(
+        CommandHandler("reschedule", reschedule.reschedule_start, filters=owner_filter)
+    )
+    application.add_handler(CommandHandler("remove", remove.remove_start, filters=owner_filter))
     application.add_handler(CommandHandler("dayoff", day_off.dayoff_start, filters=owner_filter))
     application.add_handler(CommandHandler("dayon", day_off.dayon_start, filters=owner_filter))
     application.add_handler(CommandHandler("clear_past", clear.clear_past_start, filters=owner_filter))
@@ -85,6 +92,21 @@ def build_application() -> Application:
     )
     application.add_handler(CallbackQueryHandler(clear.handle_clear_confirm, pattern=r"^clear_confirm$"))
     application.add_handler(CallbackQueryHandler(clear.handle_clear_cancel, pattern=r"^clear_cancel$"))
+    application.add_handler(
+        CallbackQueryHandler(remove.handle_remove_confirm, pattern=r"^removeconfirm_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(remove.handle_remove_cancel, pattern=r"^removecancel_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(replace_recipe.handle_replace_ask, pattern=r"^replaceask_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(replace_recipe.handle_replace_pick, pattern=r"^replacepick_\d+_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(replace_recipe.handle_replace_cancel, pattern=r"^replacecancel_\d+$")
+    )
     application.add_handler(
         CallbackQueryHandler(onboarding.handle_set_language, pattern=r"^setlang_(en|it|es)$")
     )

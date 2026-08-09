@@ -1,6 +1,8 @@
-"""/replace_recipe: swap in an existing library recipe for a given date/meal slot."""
+"""/replace_recipe: swap in an existing library recipe for a given date/meal slot.
+Also handles the 'Replace' button on /agenda entries, which does the same thing
+via callback buttons instead of a conversation."""
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import meal_service
@@ -108,3 +110,62 @@ async def _apply_replacement(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await update.message.reply_text(
         f"{prefix} {recipe['name']} for {label} on {pending['date']}."
     )
+
+
+@owner_only
+async def handle_replace_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    meal_id = int(query.data.split("_", 1)[1])
+    conn = context.bot_data["conn"]
+    meal = meal_service.get_meal(conn, meal_id)
+
+    await query.answer()
+    if meal is None:
+        await query.edit_message_text("That meal no longer exists.")
+        return
+
+    recipes = conn.execute(
+        "SELECT id, name FROM recipes WHERE id != ? ORDER BY name COLLATE NOCASE",
+        (meal["recipe_id"] or 0,),
+    ).fetchall()
+    if not recipes:
+        await query.edit_message_text("No other saved recipes yet. Use /addrecipe first.")
+        return
+
+    buttons = [
+        [InlineKeyboardButton(recipe["name"], callback_data=f"replacepick_{meal_id}_{recipe['id']}")]
+        for recipe in recipes
+    ]
+    buttons.append([InlineKeyboardButton("Cancel", callback_data=f"replacecancel_{meal_id}")])
+    await query.edit_message_text(
+        "-- Please select a recipe --", reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+@owner_only
+async def handle_replace_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    _, meal_id_str, recipe_id_str = query.data.split("_", 2)
+    meal_id, recipe_id = int(meal_id_str), int(recipe_id_str)
+    conn = context.bot_data["conn"]
+
+    meal = meal_service.get_meal(conn, meal_id)
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+
+    await query.answer()
+    if meal is None or recipe is None:
+        await query.edit_message_text("That meal or recipe no longer exists.")
+        return
+
+    link = recipe_service.pick_display_link(recipe)
+    meal_service.apply_recipe_choice(conn, meal_id, recipe, link)
+
+    label = meal_type_label(meal["meal_type"])
+    await query.edit_message_text(f"Replaced with {recipe['name']} for {label} on {meal['date']}.")
+
+
+@owner_only
+async def handle_replace_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Cancelled.")

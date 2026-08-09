@@ -4,7 +4,7 @@ manual recipe add, add-link, rename, replace, URL import, or logging an eaten me
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers import day_off, recipe_library, replace_recipe, tracking, upload, url_import
+from handlers import day_off, recipe_library, replace_recipe, reschedule, tracking, upload, url_import
 
 
 async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -19,6 +19,8 @@ async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if await recipe_library.try_handle_new_recipe_step(update, context):
         return
     if await replace_recipe.try_handle_replace_step(update, context):
+        return
+    if await reschedule.try_handle_reschedule_step(update, context):
         return
     if await url_import.try_handle_url_import(update, context):
         return

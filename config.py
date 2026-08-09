@@ -17,3 +17,5 @@ for _raw_id in os.environ.get("EXTRA_TELEGRAM_IDS", "").split(","):
         ALLOWED_TELEGRAM_IDS.add(int(_raw_id))
 
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/pieapple.db")
+
+TIMEZONE = os.environ.get("TIMEZONE", "Europe/Rome")

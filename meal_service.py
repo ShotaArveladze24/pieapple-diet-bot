@@ -219,6 +219,24 @@ def log_consumption(
     return int(cursor.lastrowid)
 
 
+def reschedule_meal(conn: sqlite3.Connection, meal_id: int, new_date: str) -> str:
+    """Moves a meal to a new date, keeping its meal_type slot. If that slot is already
+    occupied on the target date, swaps dates with the occupying meal instead of
+    overwriting it, so no meal is silently lost. Returns 'swapped' or 'moved'."""
+    meal = get_meal(conn, meal_id)
+    occupying = get_meal_by_date_type(conn, new_date, meal["meal_type"])
+
+    if occupying is not None and occupying["id"] != meal_id:
+        conn.execute("UPDATE meals SET date = ? WHERE id = ?", (meal["date"], occupying["id"]))
+        conn.execute("UPDATE meals SET date = ? WHERE id = ?", (new_date, meal_id))
+        conn.commit()
+        return "swapped"
+
+    conn.execute("UPDATE meals SET date = ? WHERE id = ?", (new_date, meal_id))
+    conn.commit()
+    return "moved"
+
+
 def week_bounds(reference: date | None = None) -> tuple[str, str]:
     """Restituisce (lunedi, domenica) della settimana corrente in formato ISO."""
     today = reference or date.today()
