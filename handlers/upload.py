@@ -15,6 +15,8 @@ from config import ANTHROPIC_API_KEY
 
 logger = logging.getLogger(__name__)
 
+TELEGRAM_MESSAGE_LIMIT = 4096
+
 PDF_DISABLED_MESSAGE = (
     "PDF upload is disabled because AI extraction has been removed. "
     "Use manual commands like /addrecipe, /today, /tomorrow, and /week."
@@ -66,6 +68,29 @@ def _format_summary(plan: dict) -> str:
     return "\n".join(lines).strip()
 
 
+def _chunk_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+
+    for line in text.split("\n"):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            while len(line) > limit:
+                chunks.append(line[:limit])
+                line = line[limit:]
+            current = line
+        else:
+            current = candidate
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
 @owner_only
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not ANTHROPIC_API_KEY:
@@ -90,9 +115,9 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         plan = await asyncio.to_thread(claude_client.extract_plan, pdf_text)
         summary = _format_summary(plan)
-        await update.message.reply_text(
-            "PDF extracted successfully. Here is the parsed plan summary:\n\n" + summary
-        )
+        message = "PDF extracted successfully. Here is the parsed plan summary:\n\n" + summary
+        for chunk in _chunk_message(message):
+            await update.message.reply_text(chunk)
     except ValueError as exc:
         logger.exception("Invalid PDF plan payload", exc_info=exc)
         await update.message.reply_text(INVALID_PLAN_MESSAGE)
