@@ -172,24 +172,31 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         plan = await asyncio.to_thread(claude_client.extract_plan, pdf_text)
         conn = context.bot_data["conn"]
         summary_lines, week_start = _save_plan(conn, plan, document.file_name or "upload.pdf")
-
-        message = f"Plan saved for week starting {week_start}:\n\n" + "\n".join(summary_lines).strip()
-        for chunk in _chunk_message(message):
-            await update.message.reply_text(chunk)
     except ValueError as exc:
         logger.exception("Invalid PDF plan payload", exc_info=exc)
         await update.message.reply_text(INVALID_PLAN_MESSAGE)
+        return
     except Exception as exc:
         logger.exception("PDF upload failed", exc_info=exc)
         await update.message.reply_text(
             "An error occurred while processing the PDF. "
             "Please try again or use manual commands like /addrecipe."
         )
+        return
     finally:
         if temp_file is not None and temp_file.exists():
             try:
                 temp_file.unlink()
             except Exception:
                 logger.exception("Could not delete temporary PDF file")
+
+    # The plan is already committed to the DB at this point, so a failure sending the
+    # confirmation (e.g. a Telegram API timeout) is only logged, not reported as an error.
+    message = f"Plan saved for week starting {week_start}:\n\n" + "\n".join(summary_lines).strip()
+    try:
+        for chunk in _chunk_message(message):
+            await update.message.reply_text(chunk)
+    except Exception:
+        logger.exception("Failed to send PDF plan confirmation")
 
 
