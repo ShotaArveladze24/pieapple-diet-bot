@@ -10,7 +10,7 @@ import meal_service
 import recipe_service
 from i18n import meal_type_label, t
 
-_LANGUAGE_LINK_COLUMNS = (("link_it", "Link IT"), ("link_es", "Link ES"), ("link_en", "Link EN"))
+_LANGUAGE_LINK_COLUMNS = (("link_en", "Link EN"), ("link_es", "Link ES"), ("link_it", "Link IT"))
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -128,8 +128,9 @@ async def agenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         cal_link = calendar_link.build_meal_reminder_link(meal["meal_type"], meal["date"], meal["dish_name"])
         rows = [[
-            InlineKeyboardButton("Calendar", url=cal_link),
-            InlineKeyboardButton("Remove", callback_data=f"removeconfirm_{meal['id']}"),
+            InlineKeyboardButton("CAL", url=cal_link),
+            InlineKeyboardButton("DEL", callback_data=f"removeconfirm_{meal['id']}"),
+            InlineKeyboardButton("SUBS", callback_data=f"replaceask_{meal['id']}"),
         ]]
 
         link_row = []
@@ -144,7 +145,6 @@ async def agenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if link_row:
             rows.append(link_row)
 
-        rows.append([InlineKeyboardButton("Replace", callback_data=f"replaceask_{meal['id']}")])
         keyboard = InlineKeyboardMarkup(rows)
         await update.message.reply_text(text, reply_markup=keyboard)
         shown += 1
