@@ -46,6 +46,10 @@ def _normalize_days(plan: dict) -> list[dict]:
     if not isinstance(days, list):
         if isinstance(plan.get("day"), dict):
             days = [plan["day"]]
+        elif plan.get("dish_name"):
+            # Single-recipe extractions sometimes put the meal fields directly on the
+            # top-level plan instead of nesting them under days/meals.
+            days = [{"day_label": "Day 1", "meals": [plan]}]
         else:
             raise ValueError("The extracted plan is missing the required 'days' array.")
 

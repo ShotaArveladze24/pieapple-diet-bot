@@ -133,11 +133,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     # Python 3.14 removed asyncio.get_event_loop()'s implicit loop creation, which
     # python-telegram-bot 21.x's run_polling() still relies on. Setting a loop explicitly
     # keeps that call working without needing to patch the library.
     asyncio.set_event_loop(asyncio.new_event_loop())
     application = build_application()
+    logger.info("PieappleDietBot is running and polling for updates.")
     application.run_polling()
 
 
