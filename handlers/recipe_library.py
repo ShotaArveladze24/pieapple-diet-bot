@@ -315,7 +315,15 @@ async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, 
     recipe = recipe_service.get_recipe(conn, recipe_id)
     if recipe is None:
         return
-    await message.reply_text(_format_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
+
+    # Whatever edit (or Scan) triggered this refresh is already committed to the DB by
+    # this point, so a failure sending this screen (e.g. a Telegram API timeout) is only
+    # logged, not reported as an error - the next /edit_recipe or /recipe_details will
+    # show it. This is the single call site shared by every edit_recipe action.
+    try:
+        await message.reply_text(_format_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
+    except Exception:
+        logger.exception("Could not send updated recipe screen")
 
 
 def _collect_recipe_scan_updates(recipe) -> dict:
