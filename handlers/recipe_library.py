@@ -8,6 +8,7 @@ and notes, with a Scan action that looks up missing links/translations/nutrition
 import asyncio
 import json
 import logging
+import re
 import unicodedata
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -37,6 +38,16 @@ _LANGUAGE_WORDS = {
 }
 
 _LANG_LABELS = {"it": "IT", "es": "ES", "en": "EN"}
+
+_VER_LINK_RE = re.compile(r"\(\s*ver\s+link\s*\)|ver\s+link", re.IGNORECASE)
+
+
+def _strip_ver_link(name: str) -> str:
+    """Removes the '(VER LINK)' / 'VER LINK' PDF-extraction artifact (a hyperlinked
+    'see link' label in the source PDF that plain-text extraction can't resolve to an
+    actual URL, so it sometimes lands as literal text in the dish name instead)."""
+    cleaned = _VER_LINK_RE.sub("", name)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def _normalize(text: str) -> str:
@@ -76,6 +87,52 @@ async def list_recipes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     lines.append("\nUse /recipe_details <id> for full details, or /edit_recipe (then send the id) to edit.")
 
     for chunk in chunk_message("\n\n".join(lines)):
+        await update.message.reply_text(chunk)
+
+
+@owner_only
+async def clean_titles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = context.bot_data["conn"]
+
+    meals = conn.execute(
+        "SELECT id, dish_name, recipe_id FROM meals WHERE dish_name LIKE '%ver link%'"
+    ).fetchall()
+    if not meals:
+        await update.message.reply_text('No meal titles contain "VER LINK".')
+        return
+
+    lines = []
+    cleaned_recipe_ids: set[int] = set()
+    for meal in meals:
+        cleaned = _strip_ver_link(meal["dish_name"])
+        if not cleaned or cleaned == meal["dish_name"]:
+            continue
+
+        conn.execute("UPDATE meals SET dish_name = ? WHERE id = ?", (cleaned, meal["id"]))
+        lines.append(f"#{meal['id']}: '{meal['dish_name']}' -> '{cleaned}'")
+
+        recipe_id = meal["recipe_id"]
+        if recipe_id is not None and recipe_id not in cleaned_recipe_ids:
+            cleaned_recipe_ids.add(recipe_id)
+            recipe = recipe_service.get_recipe(conn, recipe_id)
+            if recipe and "ver link" in recipe["name"].lower():
+                recipe_cleaned = _strip_ver_link(recipe["name"])
+                if recipe_cleaned:
+                    try:
+                        recipe_service.rename_recipe(conn, recipe_id, recipe_cleaned)
+                    except Exception:
+                        # Renamed value collided with another recipe's name (unique,
+                        # case-insensitive) - leave that recipe's name as-is.
+                        logger.exception("Could not rename recipe #%s after title cleanup", recipe_id)
+
+    conn.commit()
+
+    if not lines:
+        await update.message.reply_text('No meal titles contain "VER LINK".')
+        return
+
+    text = "Cleaned up these meal titles:\n\n" + "\n".join(lines)
+    for chunk in chunk_message(text):
         await update.message.reply_text(chunk)
 
 
@@ -280,6 +337,8 @@ def _format_recipe_text(recipe) -> str:
         f"  Oven temperature: {oven_temp} °C" if oven_temp is not None else "  Oven temperature: (not set)",
     ]
 
+    rating = recipe["rating"]
+    lines += ["", f"Rating: {rating}/10" if rating is not None else "Rating: (not set)"]
     lines += ["", f"Notes: {recipe['notes'] or '(empty)'}"]
     return "\n".join(lines)
 

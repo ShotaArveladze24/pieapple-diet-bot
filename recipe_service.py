@@ -132,6 +132,13 @@ def set_oven_temperature_c(conn: sqlite3.Connection, recipe_id: int, celsius: in
     conn.commit()
 
 
+def set_rating(conn: sqlite3.Connection, recipe_id: int, rating: int | None) -> None:
+    if rating is not None and not (1 <= rating <= 10):
+        raise ValueError(f"Rating must be between 1 and 10: {rating}")
+    conn.execute("UPDATE recipes SET rating = ? WHERE id = ?", (rating, recipe_id))
+    conn.commit()
+
+
 def link_meal_to_recipe(conn: sqlite3.Connection, dish_name: str, language: str, link: str | None) -> int:
     """Finds or creates the shared recipe for this dish name.
     The given link (if any) is stored under the detected/given language."""

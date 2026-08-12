@@ -235,6 +235,15 @@ def week_bounds(reference: date | None = None) -> tuple[str, str]:
     return monday.isoformat(), sunday.isoformat()
 
 
+def report_bounds(reference: date | None = None) -> tuple[str, str]:
+    """Returns (Monday of last week, today) - the window /report covers, so it only
+    ever shows days that have already happened."""
+    today = reference or date.today()
+    current_monday = today - timedelta(days=today.weekday())
+    previous_monday = current_monday - timedelta(days=7)
+    return previous_monday.isoformat(), today.isoformat()
+
+
 def mark_day_off(conn: sqlite3.Connection, day_date: str, note: str | None = None) -> None:
     conn.execute(
         "INSERT INTO days_off (date, note) VALUES (?, ?) "
@@ -258,6 +267,11 @@ def list_days_off_in_range(conn: sqlite3.Connection, start_date: str, end_date: 
     rows = conn.execute(
         "SELECT date FROM days_off WHERE date BETWEEN ? AND ? ORDER BY date", (start_date, end_date)
     ).fetchall()
+    return [row["date"] for row in rows]
+
+
+def list_all_days_off(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute("SELECT date FROM days_off ORDER BY date").fetchall()
     return [row["date"] for row in rows]
 
 

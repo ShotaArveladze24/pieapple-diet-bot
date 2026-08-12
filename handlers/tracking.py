@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import meal_service
+import recipe_service
 from access_control import owner_only
 from i18n import meal_type_label
 
@@ -28,7 +29,7 @@ async def handle_eaten_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = context.bot_data["conn"]
-    start_date, end_date = meal_service.week_bounds()
+    start_date, end_date = meal_service.report_bounds()
     stats = meal_service.week_adherence_report(conn, start_date, end_date)
 
     text = (
@@ -76,6 +77,16 @@ async def _prompt_unlogged_meals(
         )
 
 
+def _rating_keyboard(meal_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(str(n), callback_data=f"adherate_{n}_{meal_id}") for n in range(1, 6)],
+            [InlineKeyboardButton(str(n), callback_data=f"adherate_{n}_{meal_id}") for n in range(6, 11)],
+            [InlineKeyboardButton("Skip", callback_data=f"adherate_skip_{meal_id}")],
+        ]
+    )
+
+
 @owner_only
 async def handle_adherence_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -93,4 +104,35 @@ async def handle_adherence_response(update: Update, context: ContextTypes.DEFAUL
     meal_service.log_consumption(conn, meal_id, status)
     result_label = "stuck to the plan" if answer == "yes" else "did not stick to the plan"
     label = meal_type_label(meal["meal_type"])
-    await query.edit_message_text(f"{meal['date']} - {label}: {meal['dish_name']}\nMarked: {result_label}.")
+    base_text = f"{meal['date']} - {label}: {meal['dish_name']}\nMarked: {result_label}."
+
+    # Rating only makes sense for the planned dish itself, so it's only offered when
+    # the plan was actually followed and there's a recipe on record to rate.
+    if answer == "yes" and meal["recipe_id"] is not None:
+        await query.edit_message_text(f"{base_text}\n\nRate this dish (1-10)?", reply_markup=_rating_keyboard(meal_id))
+        return
+
+    await query.edit_message_text(base_text)
+
+
+@owner_only
+async def handle_adherence_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    _, value, meal_id_str = query.data.split("_")
+    meal_id = int(meal_id_str)
+    conn = context.bot_data["conn"]
+    meal = meal_service.get_meal(conn, meal_id)
+
+    await query.answer()
+    if meal is None:
+        await query.edit_message_text("This meal no longer exists.")
+        return
+
+    label = meal_type_label(meal["meal_type"])
+    base_text = f"{meal['date']} - {label}: {meal['dish_name']}\nMarked: stuck to the plan."
+
+    if value != "skip" and meal["recipe_id"] is not None:
+        recipe_service.set_rating(conn, meal["recipe_id"], int(value))
+        base_text += f" Rated {value}/10."
+
+    await query.edit_message_text(base_text)

@@ -61,6 +61,9 @@ def build_application() -> Application:
         CommandHandler("recipe_details", recipe_library.recipe_details, filters=owner_filter)
     )
     application.add_handler(CommandHandler("addrecipe", recipe_library.add_recipe_start, filters=owner_filter))
+    application.add_handler(
+        CommandHandler("clean_titles", recipe_library.clean_titles, filters=owner_filter)
+    )
     application.add_handler(CommandHandler("add_link", recipe_library.add_link_start, filters=owner_filter))
     application.add_handler(
         CommandHandler("edit_recipe", recipe_library.edit_recipe_start, filters=owner_filter)
@@ -126,6 +129,12 @@ def build_application() -> Application:
     application.add_handler(CallbackQueryHandler(clear.handle_clear_confirm, pattern=r"^clear_confirm$"))
     application.add_handler(CallbackQueryHandler(clear.handle_clear_cancel, pattern=r"^clear_cancel$"))
     application.add_handler(
+        CallbackQueryHandler(day_off.handle_dayoff_pick, pattern=r"^dayoffset_\d{4}-\d{2}-\d{2}$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(day_off.handle_dayon_pick, pattern=r"^dayonunset_\d{4}-\d{2}-\d{2}$")
+    )
+    application.add_handler(
         CallbackQueryHandler(remove.handle_remove_confirm, pattern=r"^removeconfirm_\d+$")
     )
     application.add_handler(
@@ -145,6 +154,9 @@ def build_application() -> Application:
     )
     application.add_handler(
         CallbackQueryHandler(tracking.handle_adherence_response, pattern=r"^adherence_(yes|no)_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(tracking.handle_adherence_rating, pattern=r"^adherate_(skip|[1-9]|10)_\d+$")
     )
 
     application.add_handler(

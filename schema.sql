@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     prep_time_minutes INTEGER,
     cook_time_minutes INTEGER,
     oven_temperature_c INTEGER,
+    rating INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
