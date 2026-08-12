@@ -16,6 +16,8 @@ async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     if await recipe_library.try_handle_rename_recipe(update, context):
         return
+    if await recipe_library.try_handle_recipe_details(update, context):
+        return
     if await recipe_library.try_handle_new_recipe_step(update, context):
         return
     if await replace_recipe.try_handle_replace_step(update, context):

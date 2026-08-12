@@ -289,11 +289,31 @@ async def try_handle_rename_recipe(update: Update, context: ContextTypes.DEFAULT
 
 @owner_only
 async def recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("Usage: /recipe_details <id>. Use /recipes to see the IDs.")
+    if context.args and context.args[0].isdigit():
+        await _send_recipe_details(update, context, int(context.args[0]))
         return
 
-    recipe_id = int(context.args[0])
+    context.user_data["awaiting_recipe_details"] = True
+    await update.message.reply_text("Which recipe ID? Use /recipes to see the IDs.")
+
+
+async def try_handle_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not context.user_data.get("awaiting_recipe_details"):
+        return False
+
+    context.user_data.pop("awaiting_recipe_details", None)
+    text = update.message.text.strip()
+    if not text.isdigit():
+        await update.message.reply_text(
+            "That doesn't look like a valid recipe ID. Use /recipe_details to try again."
+        )
+        return True
+
+    await _send_recipe_details(update, context, int(text))
+    return True
+
+
+async def _send_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE, recipe_id: int) -> None:
     conn = context.bot_data["conn"]
     recipe = recipe_service.get_recipe(conn, recipe_id)
     if recipe is None:
@@ -325,11 +345,8 @@ async def recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = (
         f"Recipe #{recipe_id}: {recipe['name']}\n\n"
         f"Ingredients:\n{ingredients_text}\n\n"
-        f"Instructions:\n{instructions}\n\n"
-        f"Calories: {calories} kcal\n"
-        f"Protein: {macros.get('protein_g', '?')} g\n"
-        f"Carbs: {macros.get('carbs_g', '?')} g\n"
-        f"Fat: {macros.get('fat_g', '?')} g"
+        f"Instructions:\n{instructions}"
+        f"{nutrition_text}"
     )
 
     buttons = []

@@ -36,8 +36,14 @@ logger = logging.getLogger(__name__)
 owner_filter = filters.User(user_id=list(ALLOWED_TELEGRAM_IDS)) if ALLOWED_TELEGRAM_IDS else filters.ALL
 
 
+async def on_startup(application: Application) -> None:
+    """Confirms the first connection to Telegram succeeded."""
+    me = await application.bot.get_me()
+    logger.info("Connected to Telegram as @%s - PieappleDietBot is polling for updates.", me.username)
+
+
 def build_application() -> Application:
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(on_startup).build()
 
     conn = get_connection()
     init_db(conn)
@@ -133,15 +139,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main() -> None:
+    # Root level is WARNING so third-party libraries (httpx, telegram.ext, apscheduler, ...)
+    # stay quiet during normal operation - no per-request/poll noise. Our own logger is
+    # bumped back up to INFO so it can still announce the first successful connection;
+    # errors and fatals from any logger always pass through regardless of level.
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+        level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    logger.setLevel(logging.INFO)
     # Python 3.14 removed asyncio.get_event_loop()'s implicit loop creation, which
     # python-telegram-bot 21.x's run_polling() still relies on. Setting a loop explicitly
     # keeps that call working without needing to patch the library.
     asyncio.set_event_loop(asyncio.new_event_loop())
     application = build_application()
-    logger.info("PieappleDietBot is running and polling for updates.")
     application.run_polling()
 
 
