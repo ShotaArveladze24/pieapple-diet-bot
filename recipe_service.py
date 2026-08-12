@@ -39,6 +39,10 @@ def get_recipe(conn: sqlite3.Connection, recipe_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
 
 
+def list_all_recipes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM recipes ORDER BY name COLLATE NOCASE").fetchall()
+
+
 def rename_recipe(conn: sqlite3.Connection, recipe_id: int, new_name: str) -> None:
     conn.execute("UPDATE recipes SET name = ? WHERE id = ?", (new_name, recipe_id))
     conn.commit()

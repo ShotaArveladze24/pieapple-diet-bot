@@ -105,11 +105,6 @@ def apply_recipe_choice(conn: sqlite3.Connection, meal_id: int, recipe: sqlite3.
     conn.commit()
 
 
-def list_all_meals(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    order = "date, CASE meal_type WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END"
-    return conn.execute(f"SELECT * FROM meals ORDER BY {order}").fetchall()
-
-
 def list_meals_before(conn: sqlite3.Connection, day_date: str) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM meals WHERE date < ? ORDER BY date", (day_date,)).fetchall()
 
@@ -132,11 +127,6 @@ def list_meals_for_range(
         f"SELECT * FROM meals WHERE date BETWEEN ? AND ? ORDER BY {order}",
         (start_date, end_date),
     ).fetchall()
-
-
-def update_recipe_link(conn: sqlite3.Connection, meal_id: int, recipe_link: str) -> None:
-    conn.execute("UPDATE meals SET recipe_link = ? WHERE id = ?", (recipe_link, meal_id))
-    conn.commit()
 
 
 def update_recipe_details(

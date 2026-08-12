@@ -94,9 +94,6 @@ def build_application() -> Application:
     )
     application.add_handler(CallbackQueryHandler(nutrition.handle_nutrition, pattern=r"^nutrition_\d+$"))
     application.add_handler(
-        CallbackQueryHandler(recipe_library.handle_edit_link_request, pattern=r"^editlink_\d+$")
-    )
-    application.add_handler(
         CallbackQueryHandler(recipe_library.handle_edit_recipe_scan, pattern=r"^erscan_\d+$")
     )
     application.add_handler(

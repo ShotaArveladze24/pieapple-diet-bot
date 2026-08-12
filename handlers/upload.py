@@ -16,12 +16,11 @@ import recipe_service
 from access_control import owner_only
 from config import ANTHROPIC_API_KEY
 from date_utils import next_monday, resolve_day_date
+from text_utils import chunk_message
 
 _VALID_MEAL_TYPES = ("breakfast", "lunch", "dinner")
 
 logger = logging.getLogger(__name__)
-
-TELEGRAM_MESSAGE_LIMIT = 4096
 
 PDF_DISABLED_MESSAGE = (
     "PDF upload is disabled because AI extraction has been removed. "
@@ -126,29 +125,6 @@ def _save_plan(conn, plan: dict, source_filename: str) -> tuple[list[str], str]:
     return lines, week_monday
 
 
-def _chunk_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
-    chunks: list[str] = []
-    current = ""
-
-    for line in text.split("\n"):
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate) > limit:
-            if current:
-                chunks.append(current)
-                current = ""
-            while len(line) > limit:
-                chunks.append(line[:limit])
-                line = line[limit:]
-            current = line
-        else:
-            current = candidate
-
-    if current:
-        chunks.append(current)
-
-    return chunks
-
-
 @owner_only
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not ANTHROPIC_API_KEY:
@@ -198,7 +174,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # confirmation (e.g. a Telegram API timeout) is only logged, not reported as an error.
     message = f"Plan saved for week starting {week_start}:\n\n" + "\n".join(summary_lines).strip()
     try:
-        for chunk in _chunk_message(message):
+        for chunk in chunk_message(message):
             await update.message.reply_text(chunk)
     except Exception:
         logger.exception("Failed to send PDF plan confirmation")

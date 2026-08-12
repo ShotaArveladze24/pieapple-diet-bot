@@ -10,8 +10,6 @@ from handlers import day_off, recipe_library, replace_recipe, reschedule, tracki
 async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await day_off.try_handle_dayoff_step(update, context):
         return
-    if await recipe_library.try_handle_link_edit(update, context):
-        return
     if await recipe_library.try_handle_add_link(update, context):
         return
     if await recipe_library.try_handle_recipe_details(update, context):

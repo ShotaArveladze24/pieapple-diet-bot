@@ -20,7 +20,7 @@ import settings_service
 from access_control import owner_only
 from config import ANTHROPIC_API_KEY
 from date_utils import parse_user_date
-from i18n import meal_type_label
+from text_utils import chunk_message
 
 logger = logging.getLogger(__name__)
 
@@ -59,58 +59,24 @@ def parse_language(text: str) -> str | None:
 @owner_only
 async def list_recipes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = context.bot_data["conn"]
-    meals = meal_service.list_all_meals(conn)
+    recipes = recipe_service.list_all_recipes(conn)
 
-    if not meals:
+    if not recipes:
         await update.message.reply_text("No saved recipes yet. Upload a PDF, send a URL, or use /addrecipe.")
         return
 
-    for meal in meals:
-        label = meal_type_label(meal["meal_type"])
-        text = f"📅 {meal['date']} - {label}: {meal['dish_name']}"
-        if meal["recipe_id"]:
-            text += f"\nRecipe ID: {meal['recipe_id']} (use /recipe_details {meal['recipe_id']})"
-        buttons = []
-        if meal["recipe_link"]:
-            text += f"\n{meal['recipe_link']}"
-            if meal["recipe_link"].startswith(("http://", "https://")):
-                buttons.append(InlineKeyboardButton("Open link", url=meal["recipe_link"]))
-        buttons.append(InlineKeyboardButton("Edit link", callback_data=f"editlink_{meal['id']}"))
-        keyboard = InlineKeyboardMarkup([buttons])
-        await update.message.reply_text(text, reply_markup=keyboard)
+    lines = []
+    for recipe in recipes:
+        line = f"#{recipe['id']} {recipe['name']}"
+        link = recipe_service.pick_display_link(recipe)
+        if link:
+            line += f"\n{link}"
+        lines.append(line)
 
+    lines.append("\nUse /recipe_details <id> for full details, or /edit_recipe (then send the id) to edit.")
 
-@owner_only
-async def handle_edit_link_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    meal_id = int(query.data.split("_", 1)[1])
-    conn = context.bot_data["conn"]
-    meal = meal_service.get_meal(conn, meal_id)
-    if meal is None:
-        await query.answer("Meal not found.")
-        return
-
-    context.user_data["awaiting_link_for_meal"] = meal_id
-    await query.answer()
-    await query.message.reply_text(
-        f"Send the new link for '{meal['dish_name']}' (or '-' to remove it)."
-    )
-
-
-async def try_handle_link_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    meal_id = context.user_data.get("awaiting_link_for_meal")
-    if meal_id is None:
-        return False
-
-    context.user_data.pop("awaiting_link_for_meal", None)
-    conn = context.bot_data["conn"]
-    meal = meal_service.get_meal(conn, meal_id)
-    text = update.message.text.strip()
-    new_link = None if text == "-" else text
-    meal_service.update_recipe_link(conn, meal_id, new_link)
-
-    await update.message.reply_text("Link updated." if new_link else "Link removed.")
-    return True
+    for chunk in chunk_message("\n\n".join(lines)):
+        await update.message.reply_text(chunk)
 
 
 @owner_only

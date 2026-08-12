@@ -18,7 +18,7 @@ HELP_TEXT = (
     "/tomorrow - tomorrow's meals\n"
     "/week - this week's plan\n"
     "/agenda - the next 7 days' plan, with Calendar/Remove/Link/Replace buttons per meal\n"
-    "/recipes - list saved recipes, with link editing\n"
+    "/recipes - alphabetical list of saved recipes with their id\n"
     "/recipe_details - ingredients, quantities, instructions and nutrition for a recipe "
     "(asks for the id)\n"
     "/add_link <id> <it|es|en> - add or overwrite a recipe's link for a language\n"
