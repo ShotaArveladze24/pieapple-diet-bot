@@ -245,7 +245,7 @@ async def try_handle_edit_recipe_id(update: Update, context: ContextTypes.DEFAUL
     return True
 
 
-def _format_edit_recipe_text(recipe) -> str:
+def _format_recipe_text(recipe) -> str:
     lines = [f"Recipe #{recipe['id']}", "", "Name:"]
     for lang in ("it", "es", "en"):
         lines.append(f"  {_LANG_LABELS[lang]}: {recipe[f'name_{lang}'] or '(empty)'}")
@@ -315,7 +315,7 @@ async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, 
     recipe = recipe_service.get_recipe(conn, recipe_id)
     if recipe is None:
         return
-    await message.reply_text(_format_edit_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
+    await message.reply_text(_format_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
 
 
 def _collect_recipe_scan_updates(recipe) -> dict:
@@ -755,34 +755,16 @@ async def _send_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"No recipe found with id {recipe_id}.")
         return
 
+    # Same fields /edit_recipe shows and Scan fills in (per-language names/links,
+    # per-100g nutrition, cooking info) - ingredients/instructions are a separate,
+    # rarely-populated legacy field pair, so they're appended only when present
+    # rather than gating the whole response on them.
+    text = _format_recipe_text(recipe)
+
     ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
-    instructions = recipe["instructions"]
-    if not ingredients or not instructions:
-        details_text = "Detailed ingredients and instructions are not available."
-        await update.message.reply_text(
-            f"Recipe #{recipe_id}: {recipe['name']}\n\n" + details_text
-        )
-        return
-
-    if recipe["calories"] and recipe["macros_json"]:
-        calories = recipe["calories"]
-        macros = json.loads(recipe["macros_json"])
-        nutrition_text = (
-            f"\n\nCalories: {calories} kcal\n"
-            f"Protein: {macros.get('protein_g', '?')} g\n"
-            f"Carbs: {macros.get('carbs_g', '?')} g\n"
-            f"Fat: {macros.get('fat_g', '?')} g"
-        )
-    else:
-        nutrition_text = "\n\nNutrition information is not available."
-
-    ingredients_text = "\n".join(f"- {item}" for item in ingredients)
-    text = (
-        f"Recipe #{recipe_id}: {recipe['name']}\n\n"
-        f"Ingredients:\n{ingredients_text}\n\n"
-        f"Instructions:\n{instructions}"
-        f"{nutrition_text}"
-    )
+    if ingredients and recipe["instructions"]:
+        ingredients_text = "\n".join(f"- {item}" for item in ingredients)
+        text += f"\n\nIngredients:\n{ingredients_text}\n\nInstructions:\n{recipe['instructions']}"
 
     buttons = []
     for lang, label in (("link_it", "Open (IT)"), ("link_es", "Open (ES)"), ("link_en", "Open (EN)")):
