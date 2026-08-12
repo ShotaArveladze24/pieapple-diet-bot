@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS recipes (
     link_it TEXT,
     link_es TEXT,
     link_en TEXT,
+    name_it TEXT,
+    name_es TEXT,
+    name_en TEXT,
+    notes TEXT,
+    calories_per_100g INTEGER,
+    protein_per_100g_g REAL,
+    carbs_per_100g_g REAL,
+    fat_per_100g_g REAL,
     created_at TEXT DEFAULT (datetime('now'))
 );
 

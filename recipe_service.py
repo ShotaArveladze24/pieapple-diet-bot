@@ -5,6 +5,7 @@ import sqlite3
 
 _LANG_COLUMNS = {"it": "link_it", "es": "link_es", "en": "link_en"}
 _LINK_PRIORITY = ("link_it", "link_es", "link_en")
+_NAME_LANG_COLUMNS = {"it": "name_it", "es": "name_es", "en": "name_en"}
 
 
 def find_recipe_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
@@ -62,6 +63,37 @@ def update_nutrition(conn: sqlite3.Connection, recipe_id: int, calories: int, ma
     conn.execute(
         "UPDATE recipes SET calories = ?, macros_json = ? WHERE id = ?",
         (calories, json.dumps(macros, ensure_ascii=False), recipe_id),
+    )
+    conn.commit()
+
+
+def set_name_for_language(conn: sqlite3.Connection, recipe_id: int, language: str, name: str | None) -> None:
+    """Sets the per-language display name (it/es/en) shown/edited in /edit_recipe.
+    Independent of the recipe's canonical `name`, which stays the dish-matching key."""
+    column = _NAME_LANG_COLUMNS.get(language)
+    if column is None:
+        raise ValueError(f"Unknown language: {language}")
+    conn.execute(f"UPDATE recipes SET {column} = ? WHERE id = ?", (name, recipe_id))
+    conn.commit()
+
+
+def update_notes(conn: sqlite3.Connection, recipe_id: int, notes: str | None) -> None:
+    conn.execute("UPDATE recipes SET notes = ? WHERE id = ?", (notes, recipe_id))
+    conn.commit()
+
+
+def update_nutrition_per_100g(
+    conn: sqlite3.Connection,
+    recipe_id: int,
+    calories: int,
+    protein_g: float,
+    carbs_g: float,
+    fat_g: float,
+) -> None:
+    conn.execute(
+        "UPDATE recipes SET calories_per_100g = ?, protein_per_100g_g = ?, "
+        "carbs_per_100g_g = ?, fat_per_100g_g = ? WHERE id = ?",
+        (calories, protein_g, carbs_g, fat_g, recipe_id),
     )
     conn.commit()
 

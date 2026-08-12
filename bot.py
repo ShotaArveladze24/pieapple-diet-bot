@@ -63,7 +63,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("addrecipe", recipe_library.add_recipe_start, filters=owner_filter))
     application.add_handler(CommandHandler("add_link", recipe_library.add_link_start, filters=owner_filter))
     application.add_handler(
-        CommandHandler("edit_recipe_name", recipe_library.edit_recipe_name_start, filters=owner_filter)
+        CommandHandler("edit_recipe", recipe_library.edit_recipe_start, filters=owner_filter)
     )
     application.add_handler(CommandHandler("language", onboarding.language_start, filters=owner_filter))
     application.add_handler(
@@ -95,6 +95,21 @@ def build_application() -> Application:
     application.add_handler(CallbackQueryHandler(nutrition.handle_nutrition, pattern=r"^nutrition_\d+$"))
     application.add_handler(
         CallbackQueryHandler(recipe_library.handle_edit_link_request, pattern=r"^editlink_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_scan, pattern=r"^erscan_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_name, pattern=r"^ername_(it|es|en)_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_link, pattern=r"^erlink_(it|es|en)_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_nutrition_start, pattern=r"^ernutrition_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_notes_start, pattern=r"^ernotes_\d+$")
     )
     application.add_handler(CallbackQueryHandler(clear.handle_clear_confirm, pattern=r"^clear_confirm$"))
     application.add_handler(CallbackQueryHandler(clear.handle_clear_cancel, pattern=r"^clear_cancel$"))

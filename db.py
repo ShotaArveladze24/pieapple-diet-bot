@@ -20,6 +20,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(schema_path.read_text(encoding="utf-8"))
     conn.commit()
     _migrate_add_recipe_id_column(conn)
+    _migrate_add_recipe_edit_columns(conn)
 
 
 def _migrate_add_recipe_id_column(conn: sqlite3.Connection) -> None:
@@ -27,3 +28,24 @@ def _migrate_add_recipe_id_column(conn: sqlite3.Connection) -> None:
     if "recipe_id" not in columns:
         conn.execute("ALTER TABLE meals ADD COLUMN recipe_id INTEGER REFERENCES recipes(id)")
         conn.commit()
+
+
+def _migrate_add_recipe_edit_columns(conn: sqlite3.Connection) -> None:
+    """Adds the columns backing /edit_recipe: per-language display names, free-text
+    notes, and per-100g nutrition (kept separate from the existing whole-dish
+    calories/macros_json columns used by /recipe_details and meal-level nutrition)."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(recipes)")}
+    new_columns = {
+        "name_it": "TEXT",
+        "name_es": "TEXT",
+        "name_en": "TEXT",
+        "notes": "TEXT",
+        "calories_per_100g": "INTEGER",
+        "protein_per_100g_g": "REAL",
+        "carbs_per_100g_g": "REAL",
+        "fat_per_100g_g": "REAL",
+    }
+    for column, col_type in new_columns.items():
+        if column not in columns:
+            conn.execute(f"ALTER TABLE recipes ADD COLUMN {column} {col_type}")
+    conn.commit()

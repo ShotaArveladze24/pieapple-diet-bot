@@ -158,6 +158,33 @@ _URL_RECIPE_TOOL = {
     },
 }
 
+_TRANSLATE_TOOL = {
+    "name": "record_translation",
+    "description": "Registra la traduzione del nome di un piatto.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "translated_name": {"type": "string"},
+        },
+        "required": ["translated_name"],
+    },
+}
+
+_NUTRITION_100G_TOOL = {
+    "name": "record_nutrition_100g",
+    "description": "Registra i valori nutrizionali per 100 grammi di prodotto.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "calories": {"type": "integer"},
+            "protein_g": {"type": "number"},
+            "carbs_g": {"type": "number"},
+            "fat_g": {"type": "number"},
+        },
+        "required": ["calories", "protein_g", "carbs_g", "fat_g"],
+    },
+}
+
 _MATCH_TOOL = {
     "name": "record_match",
     "description": "Registra a quale pasto pianificato corrisponde cio' che l'utente dice di aver mangiato.",
@@ -252,6 +279,31 @@ def find_recipe_links_multilang(dish_name: str) -> dict:
     """Cerca un link alla ricetta in italiano, spagnolo e inglese. Se il piatto e' in
     un'altra lingua, il modello lo traduce implicitamente prima di cercare."""
     return {lang: find_recipe_link(dish_name, lang) for lang in ("it", "es", "en")}
+
+
+def translate_dish_name(name: str, target_language: str) -> str:
+    """Translates a dish name into it/es/en. Used by /edit_recipe's Scan to fill in
+    whichever per-language name fields are still blank."""
+    lang_names = {"it": "italiano", "es": "spagnolo", "en": "inglese"}
+    prompt = (
+        f"Traduci il nome del piatto '{name}' in {lang_names.get(target_language, 'inglese')}. "
+        "Se e' gia' in quella lingua, restituiscilo invariato (eventualmente con una "
+        "grafia piu' naturale). Usa un nome conciso, come apparirebbe in un ricettario. "
+        "Registra la traduzione tramite lo strumento record_translation."
+    )
+    return _call_tool(prompt, _TRANSLATE_TOOL, max_tokens=256)["translated_name"]
+
+
+def estimate_nutrition_per_100g(dish_name: str, ingredients: list[str] | None) -> dict:
+    """Estimates calories/protein/carbs/fat per 100g of product. Used by /edit_recipe's
+    Scan; distinct from estimate_nutrition, which estimates a whole portion."""
+    ingredients_text = ", ".join(ingredients) if ingredients else "non specificati"
+    prompt = (
+        f"Stima i valori nutrizionali per 100 grammi di prodotto per il piatto "
+        f"'{dish_name}' (ingredienti: {ingredients_text}): calorie, proteine, carboidrati "
+        "e grassi. Registra la stima tramite lo strumento record_nutrition_100g."
+    )
+    return _call_tool(prompt, _NUTRITION_100G_TOOL, max_tokens=512)
 
 
 def suggest_substitution(original_dish: str, plan_language: str, constraints: str) -> dict:

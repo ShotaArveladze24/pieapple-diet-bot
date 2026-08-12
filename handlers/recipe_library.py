@@ -1,27 +1,28 @@
 """/recipes: list of saved meals with their recipe id and link editing.
 /addrecipe: manually add a recipe to the plan (also used, pre-filled, by URL import).
 /add_link: add or overwrite a recipe's link for one language.
-/edit_recipe_name: rename a recipe.
+/edit_recipe: view and edit a recipe's per-language names, links, per-100g nutrition
+and notes, with a Scan action that looks up missing links/translations/nutrition.
 /recipe_details: full detail (quantities, instructions, nutrition, links) for a recipe id."""
 
+import asyncio
 import json
+import logging
 import unicodedata
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import json
-import unicodedata
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
-
+import claude_client
 import meal_service
 import recipe_service
 import settings_service
 from access_control import owner_only
+from config import ANTHROPIC_API_KEY
 from date_utils import parse_user_date
 from i18n import meal_type_label
+
+logger = logging.getLogger(__name__)
 
 _MEAL_TYPE_WORDS = {
     "colazione": "breakfast", "desayuno": "breakfast", "breakfast": "breakfast",
@@ -34,6 +35,8 @@ _LANGUAGE_WORDS = {
     "es": "es", "espanol": "es", "spagnolo": "es", "spanish": "es",
     "en": "en", "inglese": "en", "english": "en",
 }
+
+_LANG_LABELS = {"it": "IT", "es": "ES", "en": "EN"}
 
 
 def _normalize(text: str) -> str:
@@ -249,41 +252,308 @@ async def try_handle_add_link(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 @owner_only
-async def edit_recipe_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("Usage: /edit_recipe_name <id>")
-        return
+async def edit_recipe_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data["awaiting_edit_recipe_id"] = True
+    await update.message.reply_text("Which recipe ID do you want to edit? Use /recipes to see the IDs.")
 
-    recipe_id = int(context.args[0])
+
+async def try_handle_edit_recipe_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not context.user_data.get("awaiting_edit_recipe_id"):
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_id", None)
+    text = update.message.text.strip()
+    if not text.isdigit():
+        await update.message.reply_text(
+            "That doesn't look like a valid recipe ID. Use /edit_recipe to try again."
+        )
+        return True
+
+    recipe_id = int(text)
+    conn = context.bot_data["conn"]
+    if recipe_service.get_recipe(conn, recipe_id) is None:
+        await update.message.reply_text(f"No recipe found with id {recipe_id}.")
+        return True
+
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
+    return True
+
+
+def _format_edit_recipe_text(recipe) -> str:
+    lines = [f"Recipe #{recipe['id']}", "", "Name:"]
+    for lang in ("it", "es", "en"):
+        lines.append(f"  {_LANG_LABELS[lang]}: {recipe[f'name_{lang}'] or '(empty)'}")
+
+    lines += ["", "Links:"]
+    for lang in ("it", "es", "en"):
+        lines.append(f"  LINK {_LANG_LABELS[lang]}: {recipe[f'link_{lang}'] or '(not set)'}")
+
+    lines.append("")
+    if recipe["calories_per_100g"] is not None:
+        lines.append(
+            "Nutrition (per 100g):\n"
+            f"  Calories: {recipe['calories_per_100g']} kcal\n"
+            f"  Fat: {recipe['fat_per_100g_g']} g\n"
+            f"  Protein: {recipe['protein_per_100g_g']} g\n"
+            f"  Carbs: {recipe['carbs_per_100g_g']} g"
+        )
+    else:
+        lines.append("Nutrition (per 100g): not set")
+
+    lines += ["", f"Notes: {recipe['notes'] or '(empty)'}"]
+    return "\n".join(lines)
+
+
+def _edit_recipe_keyboard(recipe_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🔍 Scan", callback_data=f"erscan_{recipe_id}")],
+            [
+                InlineKeyboardButton("Edit name IT", callback_data=f"ername_it_{recipe_id}"),
+                InlineKeyboardButton("Edit name ES", callback_data=f"ername_es_{recipe_id}"),
+                InlineKeyboardButton("Edit name EN", callback_data=f"ername_en_{recipe_id}"),
+            ],
+            [
+                InlineKeyboardButton("Edit LINK IT", callback_data=f"erlink_it_{recipe_id}"),
+                InlineKeyboardButton("Edit LINK ES", callback_data=f"erlink_es_{recipe_id}"),
+                InlineKeyboardButton("Edit LINK EN", callback_data=f"erlink_en_{recipe_id}"),
+            ],
+            [InlineKeyboardButton("Edit nutrition", callback_data=f"ernutrition_{recipe_id}")],
+            [InlineKeyboardButton("Edit notes", callback_data=f"ernotes_{recipe_id}")],
+        ]
+    )
+
+
+async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, recipe_id: int) -> None:
     conn = context.bot_data["conn"]
     recipe = recipe_service.get_recipe(conn, recipe_id)
     if recipe is None:
-        await update.message.reply_text(f"No recipe found with id {recipe_id}.")
+        return
+    await message.reply_text(_format_edit_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
+
+
+def _run_recipe_scan(conn, recipe) -> None:
+    """Fills in whatever is currently missing: per-language links (web search), blank
+    per-language name translations, and per-100g nutrition. Already-populated fields
+    are left untouched. Notes are never touched by Scan."""
+    recipe_id = recipe["id"]
+
+    for lang in ("it", "es", "en"):
+        if not recipe[f"link_{lang}"]:
+            link = claude_client.find_recipe_link(recipe["name"], lang)
+            if link:
+                recipe_service.set_link_for_language(conn, recipe_id, lang, link)
+
+        if not recipe[f"name_{lang}"]:
+            try:
+                translated = claude_client.translate_dish_name(recipe["name"], lang)
+            except Exception:
+                translated = None
+            if translated:
+                recipe_service.set_name_for_language(conn, recipe_id, lang, translated)
+
+    if recipe["calories_per_100g"] is None:
+        ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
+        nutrition = claude_client.estimate_nutrition_per_100g(recipe["name"], ingredients)
+        recipe_service.update_nutrition_per_100g(
+            conn,
+            recipe_id,
+            nutrition["calories"],
+            nutrition["protein_g"],
+            nutrition["carbs_g"],
+            nutrition["fat_g"],
+        )
+
+
+@owner_only
+async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
         return
 
-    context.user_data["awaiting_rename_recipe"] = recipe_id
-    await update.message.reply_text(f"Current name: {recipe['name']}\nSend the new name.")
+    if not ANTHROPIC_API_KEY:
+        await query.answer()
+        await query.message.reply_text("Scan is unavailable because AI integration is not configured.")
+        return
+
+    await query.answer()
+    await query.message.reply_text(
+        "Scanning for missing links, translations and nutrition... this may take a moment."
+    )
+
+    try:
+        await asyncio.to_thread(_run_recipe_scan, conn, recipe)
+    except Exception:
+        logger.exception("Recipe scan failed")
+        await query.message.reply_text("Something went wrong while scanning. Please try again.")
+        return
+
+    await _send_edit_recipe_screen(query.message, context, recipe_id)
 
 
-async def try_handle_rename_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    recipe_id = context.user_data.get("awaiting_rename_recipe")
+@owner_only
+async def handle_edit_recipe_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    _, lang, recipe_id_str = query.data.split("_")
+    recipe_id = int(recipe_id_str)
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_name"] = {"recipe_id": recipe_id, "language": lang}
+    await query.answer()
+    current = recipe[f"name_{lang}"] or "(empty)"
+    await query.message.reply_text(
+        f"Current {_LANG_LABELS[lang]} name: {current}\nSend the new {_LANG_LABELS[lang]} name."
+    )
+
+
+async def try_handle_edit_recipe_name_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    pending = context.user_data.get("awaiting_edit_recipe_name")
+    if pending is None:
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_name", None)
+    conn = context.bot_data["conn"]
+    new_name = update.message.text.strip()
+    recipe_service.set_name_for_language(conn, pending["recipe_id"], pending["language"], new_name)
+    await update.message.reply_text("Name updated.")
+    await _send_edit_recipe_screen(update.message, context, pending["recipe_id"])
+    return True
+
+
+@owner_only
+async def handle_edit_recipe_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    _, lang, recipe_id_str = query.data.split("_")
+    recipe_id = int(recipe_id_str)
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_link"] = {"recipe_id": recipe_id, "language": lang}
+    await query.answer()
+    current = recipe[f"link_{lang}"] or "(not set)"
+    await query.message.reply_text(
+        f"Current {_LANG_LABELS[lang]} link: {current}\nSend the new {_LANG_LABELS[lang]} URL (or '-' to clear)."
+    )
+
+
+async def try_handle_edit_recipe_link_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    pending = context.user_data.get("awaiting_edit_recipe_link")
+    if pending is None:
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_link", None)
+    conn = context.bot_data["conn"]
+    text = update.message.text.strip()
+    new_link = None if text == "-" else text
+    recipe_service.set_link_for_language(conn, pending["recipe_id"], pending["language"], new_link)
+    await update.message.reply_text("Link updated." if new_link else "Link cleared.")
+    await _send_edit_recipe_screen(update.message, context, pending["recipe_id"])
+    return True
+
+
+@owner_only
+async def handle_edit_recipe_notes_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_notes"] = recipe_id
+    await query.answer()
+    current = recipe["notes"] or "(empty)"
+    await query.message.reply_text(f"Current notes: {current}\nSend the new notes (or '-' to clear).")
+
+
+async def try_handle_edit_recipe_notes_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    recipe_id = context.user_data.get("awaiting_edit_recipe_notes")
     if recipe_id is None:
         return False
 
-    context.user_data.pop("awaiting_rename_recipe", None)
-    new_name = update.message.text.strip()
+    context.user_data.pop("awaiting_edit_recipe_notes", None)
     conn = context.bot_data["conn"]
+    text = update.message.text.strip()
+    new_notes = None if text == "-" else text
+    recipe_service.update_notes(conn, recipe_id, new_notes)
+    await update.message.reply_text("Notes updated." if new_notes else "Notes cleared.")
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
+    return True
 
+
+_NUTRITION_STEPS = ("calories", "fat", "protein", "carbs")
+_NUTRITION_PROMPTS = {
+    "calories": "Calories per 100g? (number)",
+    "fat": "Fat per 100g (g)?",
+    "protein": "Protein per 100g (g)?",
+    "carbs": "Carbs per 100g (g)?",
+}
+
+
+@owner_only
+async def handle_edit_recipe_nutrition_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    if recipe_service.get_recipe(conn, recipe_id) is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["editing_recipe_nutrition"] = {
+        "recipe_id": recipe_id,
+        "step": "calories",
+        "values": {},
+    }
+    await query.answer()
+    await query.message.reply_text(_NUTRITION_PROMPTS["calories"])
+
+
+async def try_handle_edit_recipe_nutrition_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    pending = context.user_data.get("editing_recipe_nutrition")
+    if pending is None:
+        return False
+
+    text = update.message.text.strip().replace(",", ".")
     try:
-        recipe_service.rename_recipe(conn, recipe_id, new_name)
-    except Exception:
-        await update.message.reply_text(f"A recipe named '{new_name}' already exists.")
+        number = float(text)
+    except ValueError:
+        await update.message.reply_text("Please send a number.")
         return True
 
-    meal_service.rename_meals_for_recipe(conn, recipe_id, new_name)
+    step = pending["step"]
+    pending["values"][step] = number
 
-    for meal in meal_service.list_meals_for_recipe(conn, recipe_id):
-        await update.message.reply_text(f"Recipe #{recipe_id} renamed to '{new_name}'.")
+    next_index = _NUTRITION_STEPS.index(step) + 1
+    if next_index < len(_NUTRITION_STEPS):
+        pending["step"] = _NUTRITION_STEPS[next_index]
+        await update.message.reply_text(_NUTRITION_PROMPTS[pending["step"]])
+        return True
+
+    context.user_data.pop("editing_recipe_nutrition", None)
+    conn = context.bot_data["conn"]
+    values = pending["values"]
+    recipe_service.update_nutrition_per_100g(
+        conn,
+        pending["recipe_id"],
+        int(values["calories"]),
+        values["protein"],
+        values["carbs"],
+        values["fat"],
+    )
+    await update.message.reply_text("Nutrition updated.")
+    await _send_edit_recipe_screen(update.message, context, pending["recipe_id"])
     return True
 
 

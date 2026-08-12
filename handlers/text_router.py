@@ -14,9 +14,17 @@ async def route_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     if await recipe_library.try_handle_add_link(update, context):
         return
-    if await recipe_library.try_handle_rename_recipe(update, context):
-        return
     if await recipe_library.try_handle_recipe_details(update, context):
+        return
+    if await recipe_library.try_handle_edit_recipe_id(update, context):
+        return
+    if await recipe_library.try_handle_edit_recipe_name_text(update, context):
+        return
+    if await recipe_library.try_handle_edit_recipe_link_text(update, context):
+        return
+    if await recipe_library.try_handle_edit_recipe_nutrition_text(update, context):
+        return
+    if await recipe_library.try_handle_edit_recipe_notes_text(update, context):
         return
     if await recipe_library.try_handle_new_recipe_step(update, context):
         return
