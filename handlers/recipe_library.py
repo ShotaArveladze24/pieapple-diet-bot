@@ -318,17 +318,20 @@ async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, 
     await message.reply_text(_format_edit_recipe_text(recipe), reply_markup=_edit_recipe_keyboard(recipe_id))
 
 
-def _run_recipe_scan(conn, recipe) -> None:
-    """Fills in whatever is currently missing: per-language links (web search), blank
-    per-language name translations, and per-100g nutrition. Already-populated fields
-    are left untouched. Notes are never touched by Scan."""
-    recipe_id = recipe["id"]
+def _collect_recipe_scan_updates(recipe) -> dict:
+    """Runs the (blocking) Claude calls for whatever is currently missing: per-language
+    links (web search), blank per-language name translations, and per-100g nutrition.
+    Already-populated fields are left untouched and notes are never touched by Scan.
+    Deliberately does no DB writes - this runs off the event loop thread via
+    asyncio.to_thread, and the shared sqlite3 connection can only be used from the
+    thread that created it, so writes are applied by the caller afterwards."""
+    updates: dict = {"links": {}, "names": {}, "nutrition": None}
 
     for lang in ("it", "es", "en"):
         if not recipe[f"link_{lang}"]:
             link = claude_client.find_recipe_link(recipe["name"], lang)
             if link:
-                recipe_service.set_link_for_language(conn, recipe_id, lang, link)
+                updates["links"][lang] = link
 
         if not recipe[f"name_{lang}"]:
             try:
@@ -336,11 +339,23 @@ def _run_recipe_scan(conn, recipe) -> None:
             except Exception:
                 translated = None
             if translated:
-                recipe_service.set_name_for_language(conn, recipe_id, lang, translated)
+                updates["names"][lang] = translated
 
     if recipe["calories_per_100g"] is None:
         ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
-        nutrition = claude_client.estimate_nutrition_per_100g(recipe["name"], ingredients)
+        updates["nutrition"] = claude_client.estimate_nutrition_per_100g(recipe["name"], ingredients)
+
+    return updates
+
+
+def _apply_recipe_scan_updates(conn, recipe_id: int, updates: dict) -> None:
+    for lang, link in updates["links"].items():
+        recipe_service.set_link_for_language(conn, recipe_id, lang, link)
+    for lang, name in updates["names"].items():
+        recipe_service.set_name_for_language(conn, recipe_id, lang, name)
+
+    nutrition = updates["nutrition"]
+    if nutrition is not None:
         recipe_service.update_nutrition_per_100g(
             conn,
             recipe_id,
@@ -372,7 +387,8 @@ async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_
     )
 
     try:
-        await asyncio.to_thread(_run_recipe_scan, conn, recipe)
+        updates = await asyncio.to_thread(_collect_recipe_scan_updates, recipe)
+        _apply_recipe_scan_updates(conn, recipe_id, updates)
     except Exception:
         logger.exception("Recipe scan failed")
         await query.message.reply_text("Something went wrong while scanning. Please try again.")
