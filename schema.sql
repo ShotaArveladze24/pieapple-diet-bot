@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS recipes (
     protein_per_100g_g REAL,
     carbs_per_100g_g REAL,
     fat_per_100g_g REAL,
+    difficulty INTEGER,
+    prep_time_minutes INTEGER,
+    cook_time_minutes INTEGER,
+    oven_temperature_c INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
 );
 

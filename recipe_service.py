@@ -7,6 +7,14 @@ _LANG_COLUMNS = {"it": "link_it", "es": "link_es", "en": "link_en"}
 _LINK_PRIORITY = ("link_it", "link_es", "link_en")
 _NAME_LANG_COLUMNS = {"it": "name_it", "es": "name_es", "en": "name_en"}
 
+DIFFICULTY_LABELS = {
+    0: "Mimis",
+    1: "Easy",
+    2: "Medium",
+    3: "Difficult",
+    4: "Masterchef",
+}
+
 
 def find_recipe_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM recipes WHERE name = ? COLLATE NOCASE", (name,)).fetchone()
@@ -95,6 +103,28 @@ def update_nutrition_per_100g(
         "carbs_per_100g_g = ?, fat_per_100g_g = ? WHERE id = ?",
         (calories, protein_g, carbs_g, fat_g, recipe_id),
     )
+    conn.commit()
+
+
+def set_difficulty(conn: sqlite3.Connection, recipe_id: int, difficulty: int | None) -> None:
+    if difficulty is not None and difficulty not in DIFFICULTY_LABELS:
+        raise ValueError(f"Unknown difficulty: {difficulty}")
+    conn.execute("UPDATE recipes SET difficulty = ? WHERE id = ?", (difficulty, recipe_id))
+    conn.commit()
+
+
+def set_prep_time_minutes(conn: sqlite3.Connection, recipe_id: int, minutes: int | None) -> None:
+    conn.execute("UPDATE recipes SET prep_time_minutes = ? WHERE id = ?", (minutes, recipe_id))
+    conn.commit()
+
+
+def set_cook_time_minutes(conn: sqlite3.Connection, recipe_id: int, minutes: int | None) -> None:
+    conn.execute("UPDATE recipes SET cook_time_minutes = ? WHERE id = ?", (minutes, recipe_id))
+    conn.commit()
+
+
+def set_oven_temperature_c(conn: sqlite3.Connection, recipe_id: int, celsius: int | None) -> None:
+    conn.execute("UPDATE recipes SET oven_temperature_c = ? WHERE id = ?", (celsius, recipe_id))
     conn.commit()
 
 

@@ -300,6 +300,20 @@ def _format_edit_recipe_text(recipe) -> str:
     else:
         lines.append("Nutrition (per 100g): not set")
 
+    difficulty = recipe["difficulty"]
+    difficulty_label = recipe_service.DIFFICULTY_LABELS.get(difficulty, "(not set)") if difficulty is not None else "(not set)"
+    prep_time = recipe["prep_time_minutes"]
+    cook_time = recipe["cook_time_minutes"]
+    oven_temp = recipe["oven_temperature_c"]
+    lines += [
+        "",
+        "Cooking info:",
+        f"  Difficulty: {difficulty_label}",
+        f"  Prep time: {prep_time} min" if prep_time is not None else "  Prep time: (not set)",
+        f"  Cook time: {cook_time} min" if cook_time is not None else "  Cook time: (not set)",
+        f"  Oven temperature: {oven_temp} °C" if oven_temp is not None else "  Oven temperature: (not set)",
+    ]
+
     lines += ["", f"Notes: {recipe['notes'] or '(empty)'}"]
     return "\n".join(lines)
 
@@ -319,6 +333,12 @@ def _edit_recipe_keyboard(recipe_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("Edit LINK EN", callback_data=f"erlink_en_{recipe_id}"),
             ],
             [InlineKeyboardButton("Edit nutrition", callback_data=f"ernutrition_{recipe_id}")],
+            [InlineKeyboardButton("Edit difficulty", callback_data=f"erdiff_{recipe_id}")],
+            [
+                InlineKeyboardButton("Edit prep time", callback_data=f"erprep_{recipe_id}"),
+                InlineKeyboardButton("Edit cook time", callback_data=f"ercook_{recipe_id}"),
+                InlineKeyboardButton("Edit oven temp", callback_data=f"eroven_{recipe_id}"),
+            ],
             [InlineKeyboardButton("Edit notes", callback_data=f"ernotes_{recipe_id}")],
         ]
     )
@@ -554,6 +574,169 @@ async def try_handle_edit_recipe_nutrition_text(update: Update, context: Context
     )
     await update.message.reply_text("Nutrition updated.")
     await _send_edit_recipe_screen(update.message, context, pending["recipe_id"])
+    return True
+
+
+@owner_only
+async def handle_edit_recipe_difficulty_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    if recipe_service.get_recipe(conn, recipe_id) is None:
+        await query.answer("Recipe not found.")
+        return
+
+    await query.answer()
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(f"{value}: {label}", callback_data=f"erdiffset_{value}_{recipe_id}")]
+            for value, label in recipe_service.DIFFICULTY_LABELS.items()
+        ]
+    )
+    await query.message.reply_text("Pick a difficulty:", reply_markup=keyboard)
+
+
+@owner_only
+async def handle_edit_recipe_difficulty_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    _, value_str, recipe_id_str = query.data.split("_")
+    difficulty = int(value_str)
+    recipe_id = int(recipe_id_str)
+    conn = context.bot_data["conn"]
+    if recipe_service.get_recipe(conn, recipe_id) is None:
+        await query.answer("Recipe not found.")
+        return
+
+    recipe_service.set_difficulty(conn, recipe_id, difficulty)
+    await query.answer()
+    await query.message.reply_text(f"Difficulty set to {recipe_service.DIFFICULTY_LABELS[difficulty]}.")
+    await _send_edit_recipe_screen(query.message, context, recipe_id)
+
+
+@owner_only
+async def handle_edit_recipe_prep_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_prep_time"] = recipe_id
+    await query.answer()
+    current = f"{recipe['prep_time_minutes']} min" if recipe["prep_time_minutes"] is not None else "(not set)"
+    await query.message.reply_text(
+        f"Current prep time: {current}\nSend the prep time in minutes (or '-' to clear)."
+    )
+
+
+async def try_handle_edit_recipe_prep_time_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    recipe_id = context.user_data.get("awaiting_edit_recipe_prep_time")
+    if recipe_id is None:
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_prep_time", None)
+    conn = context.bot_data["conn"]
+    text = update.message.text.strip()
+    if text == "-":
+        recipe_service.set_prep_time_minutes(conn, recipe_id, None)
+        await update.message.reply_text("Prep time cleared.")
+    else:
+        try:
+            minutes = int(text)
+        except ValueError:
+            await update.message.reply_text("Please send a whole number of minutes, or '-' to clear.")
+            return True
+        recipe_service.set_prep_time_minutes(conn, recipe_id, minutes)
+        await update.message.reply_text("Prep time updated.")
+
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
+    return True
+
+
+@owner_only
+async def handle_edit_recipe_cook_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_cook_time"] = recipe_id
+    await query.answer()
+    current = f"{recipe['cook_time_minutes']} min" if recipe["cook_time_minutes"] is not None else "(not set)"
+    await query.message.reply_text(
+        f"Current cook time: {current}\nSend the cook time in minutes (or '-' to clear)."
+    )
+
+
+async def try_handle_edit_recipe_cook_time_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    recipe_id = context.user_data.get("awaiting_edit_recipe_cook_time")
+    if recipe_id is None:
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_cook_time", None)
+    conn = context.bot_data["conn"]
+    text = update.message.text.strip()
+    if text == "-":
+        recipe_service.set_cook_time_minutes(conn, recipe_id, None)
+        await update.message.reply_text("Cook time cleared.")
+    else:
+        try:
+            minutes = int(text)
+        except ValueError:
+            await update.message.reply_text("Please send a whole number of minutes, or '-' to clear.")
+            return True
+        recipe_service.set_cook_time_minutes(conn, recipe_id, minutes)
+        await update.message.reply_text("Cook time updated.")
+
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
+    return True
+
+
+@owner_only
+async def handle_edit_recipe_oven_temp_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    recipe_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await query.answer("Recipe not found.")
+        return
+
+    context.user_data["awaiting_edit_recipe_oven_temp"] = recipe_id
+    await query.answer()
+    current = f"{recipe['oven_temperature_c']} °C" if recipe["oven_temperature_c"] is not None else "(not set)"
+    await query.message.reply_text(
+        f"Current oven temperature: {current}\n"
+        "Send the oven temperature in °C (or '-' to clear, e.g. if no oven is needed)."
+    )
+
+
+async def try_handle_edit_recipe_oven_temp_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    recipe_id = context.user_data.get("awaiting_edit_recipe_oven_temp")
+    if recipe_id is None:
+        return False
+
+    context.user_data.pop("awaiting_edit_recipe_oven_temp", None)
+    conn = context.bot_data["conn"]
+    text = update.message.text.strip()
+    if text == "-":
+        recipe_service.set_oven_temperature_c(conn, recipe_id, None)
+        await update.message.reply_text("Oven temperature cleared.")
+    else:
+        try:
+            celsius = int(text)
+        except ValueError:
+            await update.message.reply_text("Please send a whole number of degrees, or '-' to clear.")
+            return True
+        recipe_service.set_oven_temperature_c(conn, recipe_id, celsius)
+        await update.message.reply_text("Oven temperature updated.")
+
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
     return True
 
 

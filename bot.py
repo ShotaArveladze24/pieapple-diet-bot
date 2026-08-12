@@ -109,6 +109,21 @@ def build_application() -> Application:
         CallbackQueryHandler(recipe_library.handle_edit_recipe_nutrition_start, pattern=r"^ernutrition_\d+$")
     )
     application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_difficulty_start, pattern=r"^erdiff_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_difficulty_set, pattern=r"^erdiffset_[0-4]_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_prep_time_start, pattern=r"^erprep_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_cook_time_start, pattern=r"^ercook_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(recipe_library.handle_edit_recipe_oven_temp_start, pattern=r"^eroven_\d+$")
+    )
+    application.add_handler(
         CallbackQueryHandler(recipe_library.handle_edit_recipe_notes_start, pattern=r"^ernotes_\d+$")
     )
     application.add_handler(CallbackQueryHandler(clear.handle_clear_confirm, pattern=r"^clear_confirm$"))
@@ -130,6 +145,9 @@ def build_application() -> Application:
     )
     application.add_handler(
         CallbackQueryHandler(onboarding.handle_set_language, pattern=r"^setlang_(en|it|es)$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(tracking.handle_adherence_response, pattern=r"^adherence_(yes|no)_\d+$")
     )
 
     application.add_handler(

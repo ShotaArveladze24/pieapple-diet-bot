@@ -275,18 +275,20 @@ def week_adherence_report(conn: sqlite3.Connection, start_date: str, end_date: s
     days_off = set(list_days_off_in_range(conn, start_date, end_date))
     meals = [m for m in list_meals_for_range(conn, start_date, end_date) if m["date"] not in days_off]
     total = len(meals)
-    logs_by_meal = {}
+    status_by_meal: dict[int, str] = {}
     for row in conn.execute(
         """SELECT consumption_log.* FROM consumption_log
            JOIN meals ON meals.id = consumption_log.meal_id
            WHERE meals.date BETWEEN ? AND ?""",
         (start_date, end_date),
     ):
-        logs_by_meal[row["meal_id"]] = row
+        # sqlite3.Row has no .get(), so this dict (unlike the Row itself) is what makes
+        # the .get(m["id"], {}).get("status") lookups below safe for unlogged meals.
+        status_by_meal[row["meal_id"]] = row["status"]
 
-    on_plan = sum(1 for m in meals if logs_by_meal.get(m["id"], {}).get("status") == "eaten_as_planned")
-    different = sum(1 for m in meals if logs_by_meal.get(m["id"], {}).get("status") == "eaten_different")
-    skipped = sum(1 for m in meals if logs_by_meal.get(m["id"], {}).get("status") == "skipped")
+    on_plan = sum(1 for m in meals if status_by_meal.get(m["id"]) == "eaten_as_planned")
+    different = sum(1 for m in meals if status_by_meal.get(m["id"]) == "eaten_different")
+    skipped = sum(1 for m in meals if status_by_meal.get(m["id"]) == "skipped")
     unlogged = total - on_plan - different - skipped
 
     return {
@@ -296,4 +298,18 @@ def week_adherence_report(conn: sqlite3.Connection, start_date: str, end_date: s
         "skipped": skipped,
         "unlogged": unlogged,
         "days_off": len(days_off),
+    }
+
+
+def list_logged_meal_ids(conn: sqlite3.Connection, start_date: str, end_date: str) -> set[int]:
+    """Meal ids in this date range that already have a consumption_log entry, so
+    /report only prompts for a Yes/No on meals that haven't been answered yet."""
+    return {
+        row["meal_id"]
+        for row in conn.execute(
+            """SELECT DISTINCT consumption_log.meal_id FROM consumption_log
+               JOIN meals ON meals.id = consumption_log.meal_id
+               WHERE meals.date BETWEEN ? AND ?""",
+            (start_date, end_date),
+        )
     }
