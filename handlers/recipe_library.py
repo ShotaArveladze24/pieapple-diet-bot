@@ -3,6 +3,8 @@
 /add_link: add or overwrite a recipe's link for one language.
 /edit_recipe: view and edit a recipe's per-language names, links, per-100g nutrition
 and notes, with a Scan action that looks up missing links/translations/nutrition.
+/scan: runs that same Scan directly on one recipe id, without going through /edit_recipe.
+/scan_week, /scan_all: batch Scan over this week's recipes, or the whole library.
 /recipe_details: full detail (quantities, instructions, nutrition, links) for a recipe id."""
 
 import asyncio
@@ -433,6 +435,27 @@ def _apply_recipe_scan_updates(conn, recipe_id: int, updates: dict) -> None:
         )
 
 
+def _recipe_needs_scan(recipe) -> bool:
+    """Mirrors the per-field checks in _collect_recipe_scan_updates, so batch scans
+    can skip recipes that already have everything Scan would fill in."""
+    for lang in ("it", "es", "en"):
+        if not recipe[f"link_{lang}"] or not recipe[f"name_{lang}"]:
+            return True
+    return recipe["calories_per_100g"] is None
+
+
+async def _run_recipe_scan(conn, recipe) -> bool:
+    """Collects and applies Scan updates for one recipe. Returns False (and logs) on
+    failure instead of raising, so a batch scan can carry on to the next recipe."""
+    try:
+        updates = await asyncio.to_thread(_collect_recipe_scan_updates, recipe)
+    except Exception:
+        logger.exception("Recipe scan failed for recipe #%s", recipe["id"])
+        return False
+    _apply_recipe_scan_updates(conn, recipe["id"], updates)
+    return True
+
+
 @owner_only
 async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -453,15 +476,112 @@ async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_
         "Scanning for missing links, translations and nutrition... this may take a moment."
     )
 
-    try:
-        updates = await asyncio.to_thread(_collect_recipe_scan_updates, recipe)
-        _apply_recipe_scan_updates(conn, recipe_id, updates)
-    except Exception:
-        logger.exception("Recipe scan failed")
+    if not await _run_recipe_scan(conn, recipe):
         await query.message.reply_text("Something went wrong while scanning. Please try again.")
         return
 
     await _send_edit_recipe_screen(query.message, context, recipe_id)
+
+
+@owner_only
+async def scan_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/scan <id>: the same Scan used in /edit_recipe, callable directly by id."""
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /scan <recipe id>. Use /recipes to see the IDs.")
+        return
+
+    recipe_id = int(context.args[0])
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await update.message.reply_text(f"No recipe found with id {recipe_id}.")
+        return
+
+    if not ANTHROPIC_API_KEY:
+        await update.message.reply_text("Scan is unavailable because AI integration is not configured.")
+        return
+
+    await update.message.reply_text(
+        "Scanning for missing links, translations and nutrition... this may take a moment."
+    )
+
+    if not await _run_recipe_scan(conn, recipe):
+        await update.message.reply_text("Something went wrong while scanning. Please try again.")
+        return
+
+    await _send_edit_recipe_screen(update.message, context, recipe_id)
+
+
+async def _scan_recipes_batch(message, conn, recipes: list) -> None:
+    """Shared body for /scan_week and /scan_all: runs Scan over every recipe in
+    `recipes` that's still missing a link, translation or nutrition, skipping the
+    rest so a full library scan doesn't burn Claude calls on recipes with nothing
+    to fill in. Runs sequentially (not concurrently) since _apply_recipe_scan_updates
+    writes to the shared sqlite3 connection, which only tolerates use from this thread."""
+    if not ANTHROPIC_API_KEY:
+        await message.reply_text("Scan is unavailable because AI integration is not configured.")
+        return
+
+    pending = [r for r in recipes if _recipe_needs_scan(r)]
+    if not pending:
+        await message.reply_text(f"Checked {len(recipes)} recipe(s) - nothing missing, nothing to scan.")
+        return
+
+    await message.reply_text(
+        f"Scanning {len(pending)} of {len(recipes)} recipe(s) missing links, translations "
+        "or nutrition... this may take a while."
+    )
+
+    updated, failed = [], []
+    for recipe in pending:
+        if await _run_recipe_scan(conn, recipe):
+            updated.append(recipe["id"])
+        else:
+            failed.append(recipe["id"])
+
+    lines = [
+        f"Scan finished: {len(updated)} updated, {len(failed)} failed, "
+        f"{len(recipes) - len(pending)} already complete."
+    ]
+    if failed:
+        lines.append("Failed: " + ", ".join(f"#{rid}" for rid in failed))
+
+    # DB writes for every updated recipe are already committed by this point, so a
+    # failure sending this summary (e.g. a Telegram timeout) is only logged - same
+    # reasoning as _send_edit_recipe_screen below.
+    try:
+        for chunk in chunk_message("\n".join(lines)):
+            await message.reply_text(chunk)
+    except Exception:
+        logger.exception("Could not send scan batch summary")
+
+
+@owner_only
+async def scan_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/scan_week: batch Scan over every recipe scheduled in the current week's plan."""
+    conn = context.bot_data["conn"]
+    start_date, end_date = meal_service.week_bounds()
+    meals = meal_service.list_meals_for_range(conn, start_date, end_date)
+    recipe_ids = sorted({m["recipe_id"] for m in meals if m["recipe_id"] is not None})
+    if not recipe_ids:
+        await update.message.reply_text("No recipes with a saved id in this week's plan.")
+        return
+
+    recipes = [recipe_service.get_recipe(conn, rid) for rid in recipe_ids]
+    recipes = [r for r in recipes if r is not None]
+    await _scan_recipes_batch(update.message, conn, recipes)
+
+
+@owner_only
+async def scan_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/scan_all: batch Scan over every saved recipe in the library."""
+    conn = context.bot_data["conn"]
+    recipes = recipe_service.list_all_recipes(conn)
+    if not recipes:
+        await update.message.reply_text("No saved recipes yet.")
+        return
+
+    await _scan_recipes_batch(update.message, conn, recipes)
 
 
 @owner_only

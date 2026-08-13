@@ -68,6 +68,9 @@ def build_application() -> Application:
     application.add_handler(
         CommandHandler("edit_recipe", recipe_library.edit_recipe_start, filters=owner_filter)
     )
+    application.add_handler(CommandHandler("scan", recipe_library.scan_recipe, filters=owner_filter))
+    application.add_handler(CommandHandler("scan_week", recipe_library.scan_week, filters=owner_filter))
+    application.add_handler(CommandHandler("scan_all", recipe_library.scan_all, filters=owner_filter))
     application.add_handler(CommandHandler("language", onboarding.language_start, filters=owner_filter))
     application.add_handler(
         CommandHandler("replace_recipe", replace_recipe.replace_recipe_start, filters=owner_filter)
