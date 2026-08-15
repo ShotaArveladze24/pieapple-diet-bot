@@ -16,10 +16,24 @@ from text_utils import chunk_message
 logger = logging.getLogger(__name__)
 
 
+async def _notify(app: Application, chat_id: int, text: str) -> None:
+    """Sends a message, chunked if needed. A failed send (e.g. a Telegram API timeout)
+    is only logged, never raised - whatever this is reporting (a DB write, or a failure
+    already handled and worth telling the user about) has already happened by the time
+    we get here, so a delivery hiccup on top of that isn't a processing failure. Mirrors
+    the same reasoning upload.py used to apply directly before PDF/Scan moved to the AI
+    queue (see the "Don't let a Telegram send timeout look like a failure" history)."""
+    try:
+        for chunk in chunk_message(text):
+            await app.bot.send_message(chat_id, chunk)
+    except Exception:
+        logger.exception("Could not notify chat %s", chat_id)
+
+
 async def _handle_extract_plan(app: Application, request: dict, response: dict) -> None:
     chat_id = request["chat_id"]
     if response.get("error"):
-        await app.bot.send_message(chat_id, f"PDF extraction failed: {response['error']}")
+        await _notify(app, chat_id, f"PDF extraction failed: {response['error']}")
         return
 
     conn = app.bot_data["conn"]
@@ -29,16 +43,15 @@ async def _handle_extract_plan(app: Application, request: dict, response: dict) 
         )
     except ValueError:
         logger.exception("Invalid PDF plan payload from AI queue response %s", request["id"])
-        await app.bot.send_message(chat_id, upload.INVALID_PLAN_MESSAGE)
+        await _notify(app, chat_id, upload.INVALID_PLAN_MESSAGE)
         return
     except Exception:
         logger.exception("Failed to save extracted plan from AI queue response %s", request["id"])
-        await app.bot.send_message(chat_id, "An error occurred while saving the extracted plan.")
+        await _notify(app, chat_id, "An error occurred while saving the extracted plan.")
         return
 
     message = f"Plan saved for week starting {week_start}:\n\n" + "\n".join(summary_lines).strip()
-    for chunk in chunk_message(message):
-        await app.bot.send_message(chat_id, chunk)
+    await _notify(app, chat_id, message)
 
 
 async def _handle_scan_recipe(app: Application, request: dict, response: dict) -> None:
@@ -47,7 +60,7 @@ async def _handle_scan_recipe(app: Application, request: dict, response: dict) -
     name = request["payload"]["name"]
 
     if response.get("error"):
-        await app.bot.send_message(chat_id, f"Scan failed for '{name}' (#{recipe_id}): {response['error']}")
+        await _notify(app, chat_id, f"Scan failed for '{name}' (#{recipe_id}): {response['error']}")
         return
 
     conn = app.bot_data["conn"]
@@ -60,7 +73,7 @@ async def _handle_scan_recipe(app: Application, request: dict, response: dict) -
     if summary["nutrition"]:
         parts.append("nutrition")
     detail = ", ".join(parts) if parts else "nothing new"
-    await app.bot.send_message(chat_id, f"Scan finished for '{name}' (#{recipe_id}): {detail} added.")
+    await _notify(app, chat_id, f"Scan finished for '{name}' (#{recipe_id}): {detail} added.")
 
 
 async def poll(app: Application) -> None:
