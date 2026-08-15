@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/pieapple-diet-bot
-ExecStart=/home/pi/pieapple-diet-bot/.venv/bin/python bot.py
+User=ciccunitt
+WorkingDirectory=/home/ciccunitt/pieapple-diet-bot
+ExecStart=/home/ciccunitt/pieapple-diet-bot/.venv/bin/python bot.py
 Restart=on-failure
 RestartSec=5
 

@@ -5,6 +5,6 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=pi
-WorkingDirectory=/home/pi/pieapple-diet-bot
-ExecStart=/home/pi/pieapple-diet-bot/deploy/run_ai_consumer.sh
+User=ciccunitt
+WorkingDirectory=/home/ciccunitt/pieapple-diet-bot
+ExecStart=/home/ciccunitt/pieapple-diet-bot/deploy/run_ai_consumer.sh

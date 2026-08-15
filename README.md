@@ -100,21 +100,21 @@ Claude Code CLI under a Claude Pro subscription, not a metered API key).
 
 3. **Get the code onto the Pi**:
    ```bash
-   git clone https://github.com/ShotaArveladze24/pieapple-diet-bot.git /home/pi/pieapple-diet-bot
+   git clone https://github.com/ShotaArveladze24/pieapple-diet-bot.git /home/ciccunitt/pieapple-diet-bot
    ```
    Then copy over your **secrets**, which are gitignored and never in the repo — from
    your PC: `.env`, `client_secret.json`, `token.json`, and `data/pieapple.db` (your
    existing plan data) if you want to keep it:
    ```powershell
    # from Windows PowerShell, run in this project folder
-   scp .env client_secret.json token.json pi@<pi-ip-address>:/home/pi/pieapple-diet-bot/
-   scp data/pieapple.db pi@<pi-ip-address>:/home/pi/pieapple-diet-bot/data/
+   scp .env client_secret.json token.json ciccunitt@<pi-ip-address>:/home/ciccunitt/pieapple-diet-bot/
+   scp data/pieapple.db ciccunitt@<pi-ip-address>:/home/ciccunitt/pieapple-diet-bot/data/
    ```
    To update the bot later, `git pull` on the Pi instead of re-copying everything.
 
 4. **Install dependencies on the Pi**:
    ```bash
-   cd /home/pi/pieapple-diet-bot
+   cd /home/ciccunitt/pieapple-diet-bot
    python3 -m venv .venv
    .venv/bin/pip install -r requirements.txt
    chmod +x deploy/run_ai_consumer.sh
@@ -130,8 +130,8 @@ Claude Code CLI under a Claude Pro subscription, not a metered API key).
 
 6. **Install the bot as a systemd service** so it starts on boot and restarts if it
    crashes. A template is in `deploy/pieappledietbot.service` — edit `User=`/
-   `WorkingDirectory=`/`ExecStart=` if your username or path differs from `pi` /
-   `/home/pi/pieapple-diet-bot`:
+   `WorkingDirectory=`/`ExecStart=` if your username or path differs from `ciccunitt` /
+   `/home/ciccunitt/pieapple-diet-bot`:
    ```bash
    sudo cp deploy/pieappledietbot.service /etc/systemd/system/
    sudo systemctl daemon-reload
