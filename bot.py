@@ -15,6 +15,7 @@ from telegram.ext import (
 from config import ALLOWED_TELEGRAM_IDS, OWNER_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
 from db import get_connection, init_db
 from handlers import (
+    ai_consumer,
     clear,
     day_off,
     nutrition,
@@ -31,6 +32,8 @@ from handlers import (
     upload,
 )
 
+AI_QUEUE_POLL_INTERVAL_SECONDS = 300
+
 logger = logging.getLogger(__name__)
 
 owner_filter = filters.User(user_id=list(ALLOWED_TELEGRAM_IDS)) if ALLOWED_TELEGRAM_IDS else filters.ALL
@@ -42,12 +45,25 @@ async def on_startup(application: Application) -> None:
     logger.info("Connected to Telegram as @%s - PieappleDietBot is polling for updates.", me.username)
 
 
+async def poll_ai_queue(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Consumes any AI queue responses written by the external consumer since the last
+    run (see ai_queue/SPEC.md). Runs every AI_QUEUE_POLL_INTERVAL_SECONDS."""
+    try:
+        await ai_consumer.poll(context.application)
+    except Exception:
+        logger.exception("AI queue poll failed")
+
+
 def build_application() -> Application:
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(on_startup).build()
 
     conn = get_connection()
     init_db(conn)
     application.bot_data["conn"] = conn
+
+    application.job_queue.run_repeating(
+        poll_ai_queue, interval=AI_QUEUE_POLL_INTERVAL_SECONDS, first=15, name="ai_queue_poll"
+    )
 
     application.add_handler(CommandHandler("start", onboarding.start))
     application.add_handler(CommandHandler("help", onboarding.help_command, filters=owner_filter))

@@ -1,4 +1,6 @@
-"""PDF upload is disabled unless AI extraction is configured."""
+"""PDF upload: extracts text locally, then queues an extract_plan AI request instead
+of calling Claude directly (see ai_queue/SPEC.md). handlers/ai_consumer.py applies the
+result via save_extracted_plan() once the response comes back."""
 
 import asyncio
 import logging
@@ -9,23 +11,16 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
-import claude_client
+import ai_queue_service
 import meal_service
 import pdf_extractor
 import recipe_service
 from access_control import owner_only
-from config import ANTHROPIC_API_KEY
 from date_utils import next_monday, resolve_day_date
-from text_utils import chunk_message
 
 _VALID_MEAL_TYPES = ("breakfast", "lunch", "dinner")
 
 logger = logging.getLogger(__name__)
-
-PDF_DISABLED_MESSAGE = (
-    "PDF upload is disabled because AI extraction has been removed. "
-    "Use manual commands like /addrecipe, /today, /tomorrow, and /week."
-)
 
 INVALID_PLAN_MESSAGE = (
     "The PDF was read, but the extracted plan was incomplete or invalid. "
@@ -77,7 +72,7 @@ def _next_free_date(conn, meal_date: str, meal_type: str) -> str:
     return current.isoformat()
 
 
-def _save_plan(conn, plan: dict, source_filename: str) -> tuple[list[str], str]:
+def save_extracted_plan(conn, plan: dict, source_filename: str) -> tuple[list[str], str]:
     """Resolves each day's meals to real dates, stores them in the DB, and returns
     (summary_lines, week_start_date)."""
     days = _normalize_days(plan)
@@ -127,16 +122,10 @@ def _save_plan(conn, plan: dict, source_filename: str) -> tuple[list[str], str]:
 
 @owner_only
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not ANTHROPIC_API_KEY:
-        await update.message.reply_text(PDF_DISABLED_MESSAGE)
-        return
-
     document = update.message.document if update.message else None
     if document is None:
         await update.message.reply_text("No PDF document was attached.")
         return
-
-    await update.message.reply_text("PDF received, extracting your plan... this may take a moment.")
 
     temp_file: Path | None = None
     try:
@@ -148,18 +137,14 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pdf_text = await asyncio.to_thread(pdf_extractor.extract_text, str(temp_file))
         if not pdf_text.strip():
             raise ValueError("Extracted PDF text is empty")
-
-        plan = await asyncio.to_thread(claude_client.extract_plan, pdf_text)
-        conn = context.bot_data["conn"]
-        summary_lines, week_start = _save_plan(conn, plan, document.file_name or "upload.pdf")
-    except ValueError as exc:
-        logger.exception("Invalid PDF plan payload", exc_info=exc)
+    except ValueError:
+        logger.exception("Empty PDF text extraction")
         await update.message.reply_text(INVALID_PLAN_MESSAGE)
         return
-    except Exception as exc:
-        logger.exception("PDF upload failed", exc_info=exc)
+    except Exception:
+        logger.exception("PDF read failed")
         await update.message.reply_text(
-            "An error occurred while processing the PDF. "
+            "An error occurred while reading the PDF. "
             "Please try again or use manual commands like /addrecipe."
         )
         return
@@ -170,13 +155,14 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             except Exception:
                 logger.exception("Could not delete temporary PDF file")
 
-    # The plan is already committed to the DB at this point, so a failure sending the
-    # confirmation (e.g. a Telegram API timeout) is only logged, not reported as an error.
-    message = f"Plan saved for week starting {week_start}:\n\n" + "\n".join(summary_lines).strip()
-    try:
-        for chunk in chunk_message(message):
-            await update.message.reply_text(chunk)
-    except Exception:
-        logger.exception("Failed to send PDF plan confirmation")
+    ai_queue_service.enqueue(
+        "extract_plan",
+        chat_id=update.effective_chat.id,
+        payload={"pdf_text": pdf_text, "source_filename": document.file_name or "upload.pdf"},
+    )
+    await update.message.reply_text(
+        "PDF received and queued for extraction - I'll message you with the parsed plan "
+        "once it comes back (usually within a few minutes)."
+    )
 
 

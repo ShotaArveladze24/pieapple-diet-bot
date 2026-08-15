@@ -7,7 +7,6 @@ and notes, with a Scan action that looks up missing links/translations/nutrition
 /scan_week, /scan_all: batch Scan over this week's recipes, or the whole library.
 /recipe_details: full detail (quantities, instructions, nutrition, links) for a recipe id."""
 
-import asyncio
 import json
 import logging
 import re
@@ -16,12 +15,11 @@ import unicodedata
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import claude_client
+import ai_queue_service
 import meal_service
 import recipe_service
 import settings_service
 from access_control import owner_only
-from config import ANTHROPIC_API_KEY
 from date_utils import parse_user_date
 from text_utils import chunk_message
 
@@ -387,43 +385,47 @@ async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, 
         logger.exception("Could not send updated recipe screen")
 
 
-def _collect_recipe_scan_updates(recipe) -> dict:
-    """Runs the (blocking) Claude calls for whatever is currently missing: per-language
-    links (web search), blank per-language name translations, and per-100g nutrition.
-    Already-populated fields are left untouched and notes are never touched by Scan.
-    Deliberately does no DB writes - this runs off the event loop thread via
-    asyncio.to_thread, and the shared sqlite3 connection can only be used from the
-    thread that created it, so writes are applied by the caller afterwards."""
-    updates: dict = {"links": {}, "names": {}, "nutrition": None}
-
+def _recipe_needs_scan(recipe) -> bool:
+    """True if Scan would have anything to fill in: a missing per-language link or
+    name, or missing per-100g nutrition."""
     for lang in ("it", "es", "en"):
-        if not recipe[f"link_{lang}"]:
-            link = claude_client.find_recipe_link(recipe["name"], lang)
-            if link:
-                updates["links"][lang] = link
-
-        if not recipe[f"name_{lang}"]:
-            try:
-                translated = claude_client.translate_dish_name(recipe["name"], lang)
-            except Exception:
-                translated = None
-            if translated:
-                updates["names"][lang] = translated
-
-    if recipe["calories_per_100g"] is None:
-        ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
-        updates["nutrition"] = claude_client.estimate_nutrition_per_100g(recipe["name"], ingredients)
-
-    return updates
+        if not recipe[f"link_{lang}"] or not recipe[f"name_{lang}"]:
+            return True
+    return recipe["calories_per_100g"] is None
 
 
-def _apply_recipe_scan_updates(conn, recipe_id: int, updates: dict) -> None:
-    for lang, link in updates["links"].items():
+def _enqueue_recipe_scan(chat_id: int, recipe) -> None:
+    """Queues a scan_recipe AI request for whatever this recipe is currently missing
+    (see ai_queue/SPEC.md). Already-populated fields are left untouched and notes are
+    never touched by Scan. handlers/ai_consumer.py applies the result via
+    apply_scan_result() once the response comes back."""
+    ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
+    ai_queue_service.enqueue(
+        "scan_recipe",
+        chat_id=chat_id,
+        payload={
+            "recipe_id": recipe["id"],
+            "name": recipe["name"],
+            "ingredients": ingredients,
+            "missing_links": [lang for lang in ("it", "es", "en") if not recipe[f"link_{lang}"]],
+            "missing_names": [lang for lang in ("it", "es", "en") if not recipe[f"name_{lang}"]],
+            "needs_nutrition": recipe["calories_per_100g"] is None,
+        },
+    )
+
+
+def apply_scan_result(conn, recipe_id: int, result: dict) -> dict:
+    """Applies a consumed scan_recipe response's result to the DB. Called by
+    handlers/ai_consumer.py. Returns a summary of what was actually written, for the
+    follow-up Telegram message."""
+    links = result.get("links") or {}
+    names = result.get("names") or {}
+    nutrition = result.get("nutrition")
+
+    for lang, link in links.items():
         recipe_service.set_link_for_language(conn, recipe_id, lang, link)
-    for lang, name in updates["names"].items():
+    for lang, name in names.items():
         recipe_service.set_name_for_language(conn, recipe_id, lang, name)
-
-    nutrition = updates["nutrition"]
     if nutrition is not None:
         recipe_service.update_nutrition_per_100g(
             conn,
@@ -434,26 +436,7 @@ def _apply_recipe_scan_updates(conn, recipe_id: int, updates: dict) -> None:
             nutrition["fat_g"],
         )
 
-
-def _recipe_needs_scan(recipe) -> bool:
-    """Mirrors the per-field checks in _collect_recipe_scan_updates, so batch scans
-    can skip recipes that already have everything Scan would fill in."""
-    for lang in ("it", "es", "en"):
-        if not recipe[f"link_{lang}"] or not recipe[f"name_{lang}"]:
-            return True
-    return recipe["calories_per_100g"] is None
-
-
-async def _run_recipe_scan(conn, recipe) -> bool:
-    """Collects and applies Scan updates for one recipe. Returns False (and logs) on
-    failure instead of raising, so a batch scan can carry on to the next recipe."""
-    try:
-        updates = await asyncio.to_thread(_collect_recipe_scan_updates, recipe)
-    except Exception:
-        logger.exception("Recipe scan failed for recipe #%s", recipe["id"])
-        return False
-    _apply_recipe_scan_updates(conn, recipe["id"], updates)
-    return True
+    return {"links": len(links), "names": len(names), "nutrition": nutrition is not None}
 
 
 @owner_only
@@ -466,21 +449,16 @@ async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_
         await query.answer("Recipe not found.")
         return
 
-    if not ANTHROPIC_API_KEY:
-        await query.answer()
-        await query.message.reply_text("Scan is unavailable because AI integration is not configured.")
-        return
-
     await query.answer()
-    await query.message.reply_text(
-        "Scanning for missing links, translations and nutrition... this may take a moment."
-    )
-
-    if not await _run_recipe_scan(conn, recipe):
-        await query.message.reply_text("Something went wrong while scanning. Please try again.")
+    if not _recipe_needs_scan(recipe):
+        await query.message.reply_text("Nothing missing for this recipe - nothing to scan.")
         return
 
-    await _send_edit_recipe_screen(query.message, context, recipe_id)
+    _enqueue_recipe_scan(update.effective_chat.id, recipe)
+    await query.message.reply_text(
+        "Queued for scanning (links, translations, nutrition) - I'll update this recipe "
+        "once it comes back."
+    )
 
 
 @owner_only
@@ -497,63 +475,33 @@ async def scan_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(f"No recipe found with id {recipe_id}.")
         return
 
-    if not ANTHROPIC_API_KEY:
-        await update.message.reply_text("Scan is unavailable because AI integration is not configured.")
+    if not _recipe_needs_scan(recipe):
+        await update.message.reply_text("Nothing missing for this recipe - nothing to scan.")
         return
 
+    _enqueue_recipe_scan(update.effective_chat.id, recipe)
     await update.message.reply_text(
-        "Scanning for missing links, translations and nutrition... this may take a moment."
+        "Queued for scanning (links, translations, nutrition) - I'll update this recipe "
+        "once it comes back."
     )
 
-    if not await _run_recipe_scan(conn, recipe):
-        await update.message.reply_text("Something went wrong while scanning. Please try again.")
-        return
 
-    await _send_edit_recipe_screen(update.message, context, recipe_id)
-
-
-async def _scan_recipes_batch(message, conn, recipes: list) -> None:
-    """Shared body for /scan_week and /scan_all: runs Scan over every recipe in
-    `recipes` that's still missing a link, translation or nutrition, skipping the
-    rest so a full library scan doesn't burn Claude calls on recipes with nothing
-    to fill in. Runs sequentially (not concurrently) since _apply_recipe_scan_updates
-    writes to the shared sqlite3 connection, which only tolerates use from this thread."""
-    if not ANTHROPIC_API_KEY:
-        await message.reply_text("Scan is unavailable because AI integration is not configured.")
-        return
-
+async def _scan_recipes_batch(message, chat_id: int, recipes: list) -> None:
+    """Shared body for /scan_week and /scan_all: queues a scan for every recipe in
+    `recipes` that's still missing a link, translation or nutrition, skipping the rest
+    so a full library scan doesn't queue requests for recipes with nothing to fill in."""
     pending = [r for r in recipes if _recipe_needs_scan(r)]
     if not pending:
         await message.reply_text(f"Checked {len(recipes)} recipe(s) - nothing missing, nothing to scan.")
         return
 
-    await message.reply_text(
-        f"Scanning {len(pending)} of {len(recipes)} recipe(s) missing links, translations "
-        "or nutrition... this may take a while."
-    )
-
-    updated, failed = [], []
     for recipe in pending:
-        if await _run_recipe_scan(conn, recipe):
-            updated.append(recipe["id"])
-        else:
-            failed.append(recipe["id"])
+        _enqueue_recipe_scan(chat_id, recipe)
 
-    lines = [
-        f"Scan finished: {len(updated)} updated, {len(failed)} failed, "
-        f"{len(recipes) - len(pending)} already complete."
-    ]
-    if failed:
-        lines.append("Failed: " + ", ".join(f"#{rid}" for rid in failed))
-
-    # DB writes for every updated recipe are already committed by this point, so a
-    # failure sending this summary (e.g. a Telegram timeout) is only logged - same
-    # reasoning as _send_edit_recipe_screen below.
-    try:
-        for chunk in chunk_message("\n".join(lines)):
-            await message.reply_text(chunk)
-    except Exception:
-        logger.exception("Could not send scan batch summary")
+    await message.reply_text(
+        f"Queued {len(pending)} of {len(recipes)} recipe(s) for scanning "
+        f"({len(recipes) - len(pending)} already complete). I'll message you as each one finishes."
+    )
 
 
 @owner_only
@@ -569,7 +517,7 @@ async def scan_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     recipes = [recipe_service.get_recipe(conn, rid) for rid in recipe_ids]
     recipes = [r for r in recipes if r is not None]
-    await _scan_recipes_batch(update.message, conn, recipes)
+    await _scan_recipes_batch(update.message, update.effective_chat.id, recipes)
 
 
 @owner_only
@@ -581,7 +529,7 @@ async def scan_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("No saved recipes yet.")
         return
 
-    await _scan_recipes_batch(update.message, conn, recipes)
+    await _scan_recipes_batch(update.message, update.effective_chat.id, recipes)
 
 
 @owner_only

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(ai_queue/**)",
+      "Read(data/ai_queue/requests/**)",
+      "Write(data/ai_queue/responses/**)",
+      "WebSearch"
+    ]
+  }
+}
