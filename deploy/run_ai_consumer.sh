@@ -5,12 +5,15 @@
 # ai_queue/SPEC.md. Scheduled every minute by pieapple-ai-consumer.timer - see
 # CONFIGURATION.md for setup.
 #
-# Runs `claude` through a login shell (`bash -lc`) rather than invoking it directly:
-# systemd services don't source ~/.bashrc/~/.profile, so a `claude` CLI whose PATH entry
-# was only set up by nvm/npm in your login shell config would otherwise fail with
-# "command not found" here even though it works fine over SSH. REPO_DIR is exported and
-# re-applied inside the login shell in case its own startup files `cd` elsewhere.
+# CLAUDE_BIN is the absolute path to the claude CLI. systemd services don't source
+# ~/.bashrc/~/.profile, and even a login shell (bash -lc) typically no-ops ~/.bashrc for
+# non-interactive shells (the standard Debian ~/.bashrc bails out on `case $- in *i*)`),
+# so a PATH entry set up there - e.g. by nvm, or an npm global prefix under $HOME like
+# ~/.npm-global/bin - is invisible here no matter how it's invoked. Resolving by full
+# path instead sidesteps PATH/shell-startup-file behavior entirely. Override by setting
+# CLAUDE_BIN in the environment (or via Environment= in the systemd unit) if claude
+# lives somewhere else on your system - find it with `which claude` over SSH.
 set -eu
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-export REPO_DIR
-bash -lc 'cd "$REPO_DIR" && claude -p "$(cat ai_queue/CONSUMER_PROMPT.md)"'
+cd "$(dirname "$0")/.."
+CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.npm-global/bin/claude}"
+"$CLAUDE_BIN" -p "$(cat ai_queue/CONSUMER_PROMPT.md)"
