@@ -43,8 +43,8 @@ Copy `.env.example` to `.env` and fill in:
 ## 4. AI queue / Google Calendar support
 
 PDF upload and recipe Scan queue a request under `data/ai_queue/requests/` and reply
-right away instead of blocking — the bot checks `data/ai_queue/responses/` every 5
-minutes and messages you when the result is in (see step 7 for scheduling the
+right away instead of blocking — the bot checks `data/ai_queue/responses/` every
+minute and messages you when the result is in (see step 7 for scheduling the
 consumer that fulfills these). URL import and Google Calendar sync remain disabled —
 use the manual recipe commands instead:
 
@@ -141,7 +141,7 @@ Claude Code CLI under a Claude Pro subscription, not a metered API key).
    ```
 
 7. **Install the AI queue consumer timer**, which runs `deploy/run_ai_consumer.sh`
-   every 5 minutes — this is the process that actually does the Claude work (PDF
+   every minute — this is the process that actually does the Claude work (PDF
    extraction, recipe Scan), reading `ai_queue/CONSUMER_PROMPT.md` and
    `ai_queue/SPEC.md`. Edit `User=`/`WorkingDirectory=`/`ExecStart=` in
    `deploy/pieapple-ai-consumer.service` the same way as above if needed:

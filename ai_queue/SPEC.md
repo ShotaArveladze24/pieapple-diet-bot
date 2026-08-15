@@ -13,7 +13,7 @@ data/ai_queue/
   log/                  archived request+response pairs after the bot consumes them
 ```
 
-- The bot side polls `responses/` every 5 minutes (`bot.py`'s `poll_ai_queue` job) and
+- The bot side polls `responses/` every minute (`bot.py`'s `poll_ai_queue` job) and
   archives both files to `log/` once consumed. It never deletes a `requests/*.json`
   file itself, so it's still there when you (the consumer) look for it.
 - **The consumer's job**: for every file in `requests/` that does not yet have a

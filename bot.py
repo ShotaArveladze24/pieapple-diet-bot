@@ -32,7 +32,7 @@ from handlers import (
     upload,
 )
 
-AI_QUEUE_POLL_INTERVAL_SECONDS = 300
+AI_QUEUE_POLL_INTERVAL_SECONDS = 60
 
 logger = logging.getLogger(__name__)
 

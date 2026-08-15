@@ -1,10 +1,10 @@
 [Unit]
-Description=Run the PieappleDietBot AI queue consumer every 5 minutes
+Description=Run the PieappleDietBot AI queue consumer every minute
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-AccuracySec=30sec
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10sec
 
 [Install]
 WantedBy=timers.target

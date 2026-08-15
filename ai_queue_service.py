@@ -6,13 +6,13 @@ The bot never calls Claude over the network anymore. Instead:
      the Pi under the owner's Claude Pro subscription - see ai_queue/CONSUMER_PROMPT.md
      and deploy/pieapple-ai-consumer.*) picks it up, does the actual work, and writes a
      matching response JSON to data/ai_queue/responses/.
-  3. poll_and_dispatch() runs on a bot-side job_queue timer (every 5 minutes, see
+  3. poll_and_dispatch() runs on a bot-side job_queue timer (every minute, see
      handlers/ai_consumer.py) and consumes any response that has arrived: it hands the
      original request + response to the handler registered for that request's "type",
      then archives both files under data/ai_queue/log/ so they're never reprocessed.
 
-Both sides poll on the same 5-minute cadence, so a round trip normally completes within
-about 10 minutes of the request being queued.
+Both sides poll on the same 1-minute cadence, so a round trip normally completes within
+a couple of minutes of the request being queued.
 """
 
 import json
@@ -53,7 +53,7 @@ def enqueue(request_type: str, chat_id: int, payload: dict) -> str:
     }
     request_path = REQUESTS_DIR / f"{request_id}.json"
     request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
-    logger.info("Queued AI request %s (%s)", request_id, request_type)
+    logger.info("Queued AI request %s (%s) at %s", request_id, request_type, request_path.resolve())
     return request_id
 
 

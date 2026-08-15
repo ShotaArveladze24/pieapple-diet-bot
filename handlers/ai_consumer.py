@@ -2,8 +2,8 @@
 ai_queue/SPEC.md and deploy/pieapple-ai-consumer.timer) and applies them: extract_plan
 results are saved the same way upload.py used to save a direct Claude response;
 scan_recipe results are applied via recipe_library.apply_scan_result(). Runs on a
-job_queue timer in bot.py, every 5 minutes - the same cadence the consumer itself polls
-at, so a round trip normally completes within about 10 minutes."""
+job_queue timer in bot.py, every minute - the same cadence the consumer itself polls
+at, so a round trip normally completes within a couple of minutes."""
 
 import logging
 
