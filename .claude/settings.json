@@ -3,6 +3,9 @@
     "allow": [
       "Read(ai_queue/**)",
       "Read(data/ai_queue/requests/**)",
+      "Read(data/ai_queue/responses/**)",
+      "Glob(data/ai_queue/requests/**)",
+      "Glob(data/ai_queue/responses/**)",
       "Write(data/ai_queue/responses/**)",
       "WebSearch"
     ]
