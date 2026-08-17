@@ -72,6 +72,8 @@ async def _handle_scan_recipe(app: Application, request: dict, response: dict) -
         parts.append(f"{summary['names']} translation(s)")
     if summary["nutrition"]:
         parts.append("nutrition")
+    if summary["ingredients_it"]:
+        parts.append(f"{summary['ingredients_it']} ingredient(s) (IT)")
     detail = ", ".join(parts) if parts else "nothing new"
     await _notify(app, chat_id, f"Scan finished for '{name}' (#{recipe_id}): {detail} added.")
 

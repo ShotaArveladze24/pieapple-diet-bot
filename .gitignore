@@ -3,6 +3,7 @@ client_secret.json
 token.json
 data/*.db
 data/ai_queue/
+data/meal_photos/
 __pycache__/
 *.pyc
 .venv/

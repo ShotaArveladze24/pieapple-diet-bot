@@ -23,4 +23,8 @@ DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/pieapple.db")
 # Anthropic API directly - no API key involved.
 AI_QUEUE_DIR = os.environ.get("AI_QUEUE_DIR", "data/ai_queue")
 
+# Where /upload_photo saves meal photos locally, one subfolder per Telegram user id -
+# kept even if the Telegram message is later deleted.
+MEAL_PHOTOS_DIR = os.environ.get("MEAL_PHOTOS_DIR", "data/meal_photos")
+
 TIMEZONE = os.environ.get("TIMEZONE", "Europe/Rome")

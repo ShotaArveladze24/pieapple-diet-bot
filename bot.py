@@ -18,6 +18,8 @@ from handlers import (
     ai_consumer,
     clear,
     day_off,
+    ingredients_it,
+    meal_photo,
     nutrition,
     onboarding,
     plan_query,
@@ -87,6 +89,12 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("scan", recipe_library.scan_recipe, filters=owner_filter))
     application.add_handler(CommandHandler("scan_week", recipe_library.scan_week, filters=owner_filter))
     application.add_handler(CommandHandler("scan_all", recipe_library.scan_all, filters=owner_filter))
+    application.add_handler(
+        CommandHandler("scan_ingredienti_IT", ingredients_it.scan_ingredienti_it, filters=owner_filter)
+    )
+    application.add_handler(
+        CommandHandler("all_ingredients_IT", ingredients_it.all_ingredients_it, filters=owner_filter)
+    )
     application.add_handler(CommandHandler("language", onboarding.language_start, filters=owner_filter))
     application.add_handler(
         CommandHandler("replace_recipe", replace_recipe.replace_recipe_start, filters=owner_filter)
@@ -99,10 +107,15 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("dayon", day_off.dayon_start, filters=owner_filter))
     application.add_handler(CommandHandler("clear_past", clear.clear_past_start, filters=owner_filter))
     application.add_handler(CommandHandler("clear_future", clear.clear_future_start, filters=owner_filter))
+    application.add_handler(
+        CommandHandler("upload_photo", meal_photo.upload_photo_start, filters=owner_filter)
+    )
 
     application.add_handler(
         MessageHandler(filters.Document.PDF & owner_filter, upload.handle_pdf)
     )
+    application.add_handler(MessageHandler(filters.PHOTO & owner_filter, meal_photo.handle_photo))
+    application.add_handler(MessageHandler(filters.LOCATION & owner_filter, meal_photo.handle_location))
 
     application.add_handler(CallbackQueryHandler(recipe_detail.handle_recipe, pattern=r"^recipe_\d+$"))
     application.add_handler(
@@ -147,6 +160,9 @@ def build_application() -> Application:
     )
     application.add_handler(CallbackQueryHandler(clear.handle_clear_confirm, pattern=r"^clear_confirm$"))
     application.add_handler(CallbackQueryHandler(clear.handle_clear_cancel, pattern=r"^clear_cancel$"))
+    application.add_handler(
+        CallbackQueryHandler(meal_photo.handle_skip_location, pattern=r"^mealphotoskip_\d+$")
+    )
     application.add_handler(
         CallbackQueryHandler(day_off.handle_dayoff_pick, pattern=r"^dayoffset_\d{4}-\d{2}-\d{2}$")
     )

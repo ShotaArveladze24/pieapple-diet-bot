@@ -22,6 +22,7 @@ SQLite database are all gitignored.
 | `GOOGLE_CALENDAR_ID` | `primary` | Which Google Calendar to write meal events to. Use a specific calendar's id (found under that calendar's Settings > Integrate calendar > Calendar ID) to keep meal events off your main calendar |
 | `DATABASE_PATH` | `data/pieapple.db` | SQLite database file path |
 | `AI_QUEUE_DIR` | `data/ai_queue` | Where PDF-extraction and recipe-scan request/response JSON files are exchanged with the external Claude Code consumer — no API key, see [ai_queue/SPEC.md](ai_queue/SPEC.md) |
+| `MEAL_PHOTOS_DIR` | `data/meal_photos` | Where `/upload_photo` saves meal photos locally, one subfolder per Telegram user id — persists even if the Telegram message is later deleted |
 | `TIMEZONE` | `Europe/Rome` | IANA timezone used when creating Calendar events (e.g. `America/New_York`). Separate from the host machine's system timezone, which the bot also relies on for "today"/day-off/next-Monday logic — make sure the two agree |
 
 No Anthropic API key is used anywhere in this bot. PDF plan extraction and recipe

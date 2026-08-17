@@ -76,3 +76,30 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS idx_meals_plan_date ON meals(plan_id, date);
 CREATE INDEX IF NOT EXISTS idx_consumption_meal ON consumption_log(meal_id);
+
+CREATE TABLE IF NOT EXISTS ingredients_it (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE IF NOT EXISTS recipe_ingredients_it (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(id),
+    ingredient_id INTEGER NOT NULL REFERENCES ingredients_it(id),
+    quantity TEXT,
+    UNIQUE(recipe_id, ingredient_id)
+);
+
+CREATE TABLE IF NOT EXISTS meal_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_user_id INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    taken_at TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_it_recipe ON recipe_ingredients_it(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_it_ingredient ON recipe_ingredients_it(ingredient_id);
+CREATE INDEX IF NOT EXISTS idx_meal_photos_user ON meal_photos(telegram_user_id);

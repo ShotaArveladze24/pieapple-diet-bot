@@ -16,6 +16,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import ai_queue_service
+import ingredient_service
 import meal_service
 import recipe_service
 import settings_service
@@ -385,16 +386,23 @@ async def _send_edit_recipe_screen(message, context: ContextTypes.DEFAULT_TYPE, 
         logger.exception("Could not send updated recipe screen")
 
 
-def _recipe_needs_scan(recipe) -> bool:
+def _recipe_needs_ingredients_it(conn, recipe) -> bool:
+    """True if the recipe has an Italian link but no Italian ingredients saved yet."""
+    return bool(recipe["link_it"]) and not ingredient_service.has_ingredients_it(conn, recipe["id"])
+
+
+def _recipe_needs_scan(conn, recipe) -> bool:
     """True if Scan would have anything to fill in: a missing per-language link or
-    name, or missing per-100g nutrition."""
+    name, missing per-100g nutrition, or missing Italian ingredients."""
     for lang in ("it", "es", "en"):
         if not recipe[f"link_{lang}"] or not recipe[f"name_{lang}"]:
             return True
-    return recipe["calories_per_100g"] is None
+    if recipe["calories_per_100g"] is None:
+        return True
+    return _recipe_needs_ingredients_it(conn, recipe)
 
 
-def _enqueue_recipe_scan(chat_id: int, recipe) -> None:
+def _enqueue_recipe_scan(conn, chat_id: int, recipe) -> None:
     """Queues a scan_recipe AI request for whatever this recipe is currently missing
     (see ai_queue/SPEC.md). Already-populated fields are left untouched and notes are
     never touched by Scan. handlers/ai_consumer.py applies the result via
@@ -410,6 +418,8 @@ def _enqueue_recipe_scan(chat_id: int, recipe) -> None:
             "missing_links": [lang for lang in ("it", "es", "en") if not recipe[f"link_{lang}"]],
             "missing_names": [lang for lang in ("it", "es", "en") if not recipe[f"name_{lang}"]],
             "needs_nutrition": recipe["calories_per_100g"] is None,
+            "link_it": recipe["link_it"],
+            "needs_ingredients_it": _recipe_needs_ingredients_it(conn, recipe),
         },
     )
 
@@ -421,6 +431,7 @@ def apply_scan_result(conn, recipe_id: int, result: dict) -> dict:
     links = result.get("links") or {}
     names = result.get("names") or {}
     nutrition = result.get("nutrition")
+    ingredients_it = result.get("ingredients_it") or []
 
     for lang, link in links.items():
         recipe_service.set_link_for_language(conn, recipe_id, lang, link)
@@ -435,8 +446,15 @@ def apply_scan_result(conn, recipe_id: int, result: dict) -> dict:
             nutrition["carbs_g"],
             nutrition["fat_g"],
         )
+    if ingredients_it:
+        ingredient_service.set_recipe_ingredients_it(conn, recipe_id, ingredients_it)
 
-    return {"links": len(links), "names": len(names), "nutrition": nutrition is not None}
+    return {
+        "links": len(links),
+        "names": len(names),
+        "nutrition": nutrition is not None,
+        "ingredients_it": len(ingredients_it),
+    }
 
 
 @owner_only
@@ -450,14 +468,14 @@ async def handle_edit_recipe_scan(update: Update, context: ContextTypes.DEFAULT_
         return
 
     await query.answer()
-    if not _recipe_needs_scan(recipe):
+    if not _recipe_needs_scan(conn, recipe):
         await query.message.reply_text("Nothing missing for this recipe - nothing to scan.")
         return
 
-    _enqueue_recipe_scan(update.effective_chat.id, recipe)
+    _enqueue_recipe_scan(conn, update.effective_chat.id, recipe)
     await query.message.reply_text(
-        "Queued for scanning (links, translations, nutrition) - I'll update this recipe "
-        "once it comes back."
+        "Queued for scanning (links, translations, nutrition, Italian ingredients) - "
+        "I'll update this recipe once it comes back."
     )
 
 
@@ -475,28 +493,29 @@ async def scan_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(f"No recipe found with id {recipe_id}.")
         return
 
-    if not _recipe_needs_scan(recipe):
+    if not _recipe_needs_scan(conn, recipe):
         await update.message.reply_text("Nothing missing for this recipe - nothing to scan.")
         return
 
-    _enqueue_recipe_scan(update.effective_chat.id, recipe)
+    _enqueue_recipe_scan(conn, update.effective_chat.id, recipe)
     await update.message.reply_text(
-        "Queued for scanning (links, translations, nutrition) - I'll update this recipe "
-        "once it comes back."
+        "Queued for scanning (links, translations, nutrition, Italian ingredients) - "
+        "I'll update this recipe once it comes back."
     )
 
 
-async def _scan_recipes_batch(message, chat_id: int, recipes: list) -> None:
+async def _scan_recipes_batch(conn, message, chat_id: int, recipes: list) -> None:
     """Shared body for /scan_week and /scan_all: queues a scan for every recipe in
-    `recipes` that's still missing a link, translation or nutrition, skipping the rest
-    so a full library scan doesn't queue requests for recipes with nothing to fill in."""
-    pending = [r for r in recipes if _recipe_needs_scan(r)]
+    `recipes` that's still missing a link, translation, nutrition or Italian
+    ingredients, skipping the rest so a full library scan doesn't queue requests for
+    recipes with nothing to fill in."""
+    pending = [r for r in recipes if _recipe_needs_scan(conn, r)]
     if not pending:
         await message.reply_text(f"Checked {len(recipes)} recipe(s) - nothing missing, nothing to scan.")
         return
 
     for recipe in pending:
-        _enqueue_recipe_scan(chat_id, recipe)
+        _enqueue_recipe_scan(conn, chat_id, recipe)
 
     await message.reply_text(
         f"Queued {len(pending)} of {len(recipes)} recipe(s) for scanning "
@@ -517,7 +536,7 @@ async def scan_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     recipes = [recipe_service.get_recipe(conn, rid) for rid in recipe_ids]
     recipes = [r for r in recipes if r is not None]
-    await _scan_recipes_batch(update.message, update.effective_chat.id, recipes)
+    await _scan_recipes_batch(conn, update.message, update.effective_chat.id, recipes)
 
 
 @owner_only
@@ -529,7 +548,7 @@ async def scan_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("No saved recipes yet.")
         return
 
-    await _scan_recipes_batch(update.message, update.effective_chat.id, recipes)
+    await _scan_recipes_batch(conn, update.message, update.effective_chat.id, recipes)
 
 
 @owner_only

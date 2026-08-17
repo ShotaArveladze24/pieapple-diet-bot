@@ -125,7 +125,9 @@ already populated and must not be touched.
   "ingredients": ["600g petto di pollo", "2 limoni", "olio extravergine"],
   "missing_links": ["es", "en"],
   "missing_names": ["en"],
-  "needs_nutrition": true
+  "needs_nutrition": true,
+  "link_it": "https://...",
+  "needs_ingredients_it": true
 }
 ```
 
@@ -133,6 +135,9 @@ already populated and must not be touched.
 - `missing_links` / `missing_names` are subsets of `["it", "es", "en"]` - only these
   language codes need a value in the response; skip the rest.
 - `needs_nutrition` is `true` only if per-100g nutrition is still unset.
+- `link_it` is the recipe's saved Italian link, or `null` if none is saved.
+- `needs_ingredients_it` is `true` only if the recipe has an Italian link but no
+  Italian ingredient list saved yet.
 
 **Task:**
 - For each language in `missing_links`: search the web for a page with the recipe for
@@ -143,6 +148,11 @@ already populated and must not be touched.
   unchanged, possibly with more natural spelling.
 - If `needs_nutrition` is true: estimate calories and macros per 100g of the finished
   dish, using `ingredients` as a guide when available.
+- If `needs_ingredients_it` is true: fetch `link_it` and extract its ingredient list in
+  Italian as `{name, quantity}` pairs - `name` normalized (no quantity baked in, no
+  leading bullet/dash), `quantity` as free text as it would appear in a recipe (e.g.
+  `"200 g"`, `"2 uova"`, `"q.b."`). If the page has no clear ingredient list, that's
+  still a success response with `ingredients_it` omitted/empty - don't guess.
 
 **`result`:**
 
@@ -150,7 +160,11 @@ already populated and must not be touched.
 {
   "links": { "es": "https://...", "en": "https://..." },
   "names": { "en": "Lemon Chicken" },
-  "nutrition": { "calories": 165, "protein_g": 21.0, "carbs_g": 3.5, "fat_g": 7.2 }
+  "nutrition": { "calories": 165, "protein_g": 21.0, "carbs_g": 3.5, "fat_g": 7.2 },
+  "ingredients_it": [
+    { "name": "Petto di pollo", "quantity": "600 g" },
+    { "name": "Limoni", "quantity": "2" }
+  ]
 }
 ```
 
@@ -158,9 +172,12 @@ already populated and must not be touched.
   value for (a subset of what was requested is fine - omit what you couldn't find).
 - `nutrition` is `null` (or the key omitted) if `needs_nutrition` was `false`, or if you
   couldn't produce a reasonable estimate.
+- `ingredients_it` is a list of `{name, quantity}` objects (Italian), included only if
+  `needs_ingredients_it` was `true` and something was found - omit the key or send an
+  empty list otherwise.
 - If literally nothing could be filled in, that's still a success response with empty
-  `links`/`names` and `nutrition: null` - only use `error` for a request you couldn't
-  process at all (e.g. `recipe_id`/`name` missing).
+  `links`/`names`/`ingredients_it` and `nutrition: null` - only use `error` for a
+  request you couldn't process at all (e.g. `recipe_id`/`name` missing).
 
 ---
 
