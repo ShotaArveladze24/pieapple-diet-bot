@@ -55,8 +55,13 @@ def set_link_for_language(conn: sqlite3.Connection, recipe_id: int, language: st
     conn.commit()
 
 
-def pick_display_link(recipe: sqlite3.Row) -> str | None:
-    """Picks a single link to show (e.g. in a Calendar description) by priority IT > ES > EN."""
+def pick_display_link(recipe: sqlite3.Row, preferred_language: str | None = None) -> str | None:
+    """Picks a single link to show (e.g. in a Calendar description). Tries
+    `preferred_language` (it/es/en) first if given, then falls back to priority IT > ES > EN."""
+    if preferred_language:
+        preferred_column = _LANG_COLUMNS.get(preferred_language)
+        if preferred_column and recipe[preferred_column]:
+            return recipe[preferred_column]
     for column in _LINK_PRIORITY:
         if recipe[column]:
             return recipe[column]
