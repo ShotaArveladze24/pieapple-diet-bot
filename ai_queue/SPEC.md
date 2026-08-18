@@ -148,11 +148,13 @@ already populated and must not be touched.
   unchanged, possibly with more natural spelling.
 - If `needs_nutrition` is true: estimate calories and macros per 100g of the finished
   dish, using `ingredients` as a guide when available.
-- If `needs_ingredients_it` is true: fetch `link_it` and extract its ingredient list in
-  Italian as `{name, quantity}` pairs - `name` normalized (no quantity baked in, no
-  leading bullet/dash), `quantity` as free text as it would appear in a recipe (e.g.
-  `"200 g"`, `"2 uova"`, `"q.b."`). If the page has no clear ingredient list, that's
-  still a success response with `ingredients_it` omitted/empty - don't guess.
+- If `needs_ingredients_it` is true: fetch `link_it` **only** - do not web search for an
+  alternative source, this must stay a single page fetch to keep token usage down.
+  Extract its ingredient list in Italian as `{name, quantity}` pairs - `name`
+  normalized (no quantity baked in, no leading bullet/dash), `quantity` as free text as
+  it would appear in a recipe (e.g. `"200 g"`, `"2 uova"`, `"q.b."`). If `link_it` can't
+  be fetched, or the page has no clear ingredient list, that's still a success response
+  with `ingredients_it` omitted/empty - don't guess and don't search further.
 
 **`result`:**
 

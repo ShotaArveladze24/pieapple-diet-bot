@@ -902,17 +902,13 @@ async def try_handle_recipe_details(update: Update, context: ContextTypes.DEFAUL
     return True
 
 
-async def _send_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE, recipe_id: int) -> None:
-    conn = context.bot_data["conn"]
-    recipe = recipe_service.get_recipe(conn, recipe_id)
-    if recipe is None:
-        await update.message.reply_text(f"No recipe found with id {recipe_id}.")
-        return
-
-    # Same fields /edit_recipe shows and Scan fills in (per-language names/links,
-    # per-100g nutrition, cooking info) - ingredients/instructions are a separate,
-    # rarely-populated legacy field pair, so they're appended only when present
-    # rather than gating the whole response on them.
+def build_recipe_details_text(recipe) -> tuple[str, list[InlineKeyboardButton]]:
+    """Formats a recipe's full detail text (same fields /edit_recipe shows and Scan
+    fills in: per-language names/links, per-100g nutrition, cooking info) plus its
+    per-language "Open" link buttons. Ingredients/instructions are a separate,
+    rarely-populated legacy field pair, appended only when present rather than gating
+    the whole response on them. Shared by the direct /recipe_details command and the
+    /agenda calendar view's per-slot tap (handlers/plan_query.py)."""
     text = _format_recipe_text(recipe)
 
     ingredients = json.loads(recipe["ingredients"]) if recipe["ingredients"] else None
@@ -926,5 +922,16 @@ async def _send_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYP
         if link and link.startswith(("http://", "https://")):
             buttons.append(InlineKeyboardButton(label, url=link))
 
+    return text, buttons
+
+
+async def _send_recipe_details(update: Update, context: ContextTypes.DEFAULT_TYPE, recipe_id: int) -> None:
+    conn = context.bot_data["conn"]
+    recipe = recipe_service.get_recipe(conn, recipe_id)
+    if recipe is None:
+        await update.message.reply_text(f"No recipe found with id {recipe_id}.")
+        return
+
+    text, buttons = build_recipe_details_text(recipe)
     keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
     await update.message.reply_text(text, reply_markup=keyboard)

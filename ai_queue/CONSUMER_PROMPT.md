@@ -10,9 +10,9 @@ work and finish. Run non-interactively; do not modify any file outside `data/ai_
      in SPEC.md.
    - `scan_recipe`: use web search to find missing recipe links, translate the dish
      name into missing languages, and/or estimate per-100g nutrition, as described in
-     SPEC.md - only for the fields listed as missing in the payload. Also scrape the
-     Italian ingredient list (name + quantity pairs) from `link_it` when
-     `needs_ingredients_it` is true.
+     SPEC.md - only for the fields listed as missing in the payload. Also, when
+     `needs_ingredients_it` is true, fetch `link_it` (that single page only, no web
+     search) and scrape its Italian ingredient list (name + quantity pairs).
 4. Write the result to `data/ai_queue/responses/<same id>.json`, matching the response
    format in SPEC.md exactly (`id`, `result`, `error`).
 5. If a request can't be processed (malformed, unsupported type, nothing usable),

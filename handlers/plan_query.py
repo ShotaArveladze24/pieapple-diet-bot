@@ -8,9 +8,11 @@ from telegram.ext import ContextTypes
 import calendar_link
 import meal_service
 import recipe_service
+from access_control import owner_only
+from handlers import recipe_library
 from i18n import meal_type_label, t
 
-_LANGUAGE_LINK_COLUMNS = (("link_en", "Link EN"), ("link_es", "Link ES"), ("link_it", "Link IT"))
+_AGENDA_SLOTS = (("breakfast", "BRE"), ("lunch", "LUN"), ("dinner", "DIN"))
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -94,62 +96,61 @@ async def week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def agenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/agenda: a 7-day calendar view, one message per day with a BRE/LUN/DIN button
+    row. Telegram buttons can't actually be disabled or recolored, so a filled slot
+    (recipe assigned) is marked with ✅ and opens that meal's full recipe details -
+    same as /recipe_details - plus Calendar/Delete/Substitute actions; an empty slot
+    (▫️) just answers "no meal planned" when tapped."""
     conn = context.bot_data["conn"]
-    start_date = date.today().isoformat()
-    end_date = (date.today() + timedelta(days=6)).isoformat()
-    meals = meal_service.list_meals_for_range(conn, start_date, end_date)
+    start_date = date.today()
+    end_date = start_date + timedelta(days=6)
+    meals = meal_service.list_meals_for_range(conn, start_date.isoformat(), end_date.isoformat())
+    days_off = set(meal_service.list_days_off_in_range(conn, start_date.isoformat(), end_date.isoformat()))
+    meals_by_slot = {(meal["date"], meal["meal_type"]): meal for meal in meals}
 
-    if not meals:
-        await update.message.reply_text(t("no_meals_today"))
+    for offset in range(7):
+        day = (start_date + timedelta(days=offset)).isoformat()
+        if day in days_off:
+            await update.message.reply_text(f"📅 {day} - Day off (off-plan)")
+            continue
+
+        buttons = []
+        for meal_type, abbrev in _AGENDA_SLOTS:
+            meal = meals_by_slot.get((day, meal_type))
+            if meal is not None and meal["recipe_id"] is not None:
+                buttons.append(InlineKeyboardButton(f"✅ {abbrev}", callback_data=f"agendaslot_{meal['id']}"))
+            else:
+                buttons.append(InlineKeyboardButton(f"▫️ {abbrev}", callback_data="agendaempty"))
+
+        await update.message.reply_text(f"📅 {day}", reply_markup=InlineKeyboardMarkup([buttons]))
+
+
+@owner_only
+async def handle_agenda_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    meal_id = int(query.data.rsplit("_", 1)[1])
+    conn = context.bot_data["conn"]
+    meal = meal_service.get_meal(conn, meal_id)
+    recipe = recipe_service.get_recipe(conn, meal["recipe_id"]) if meal and meal["recipe_id"] else None
+    if recipe is None:
+        await query.answer("No meal planned for this slot.")
         return
 
-    days_off = set(meal_service.list_days_off_in_range(conn, start_date, end_date))
-    max_meals = 10
-    current_date = None
-    shown = 0
-    truncated = False
-    for meal in meals:
-        if shown >= max_meals:
-            truncated = True
-            break
-        if meal["date"] in days_off:
-            if meal["date"] != current_date:
-                current_date = meal["date"]
-                await update.message.reply_text(f"📅 {current_date} - Day off (off-plan)")
-            continue
-        if meal["date"] != current_date:
-            current_date = meal["date"]
-            await update.message.reply_text(f"📅 {current_date}")
+    await query.answer()
+    text, link_buttons = recipe_library.build_recipe_details_text(recipe)
 
-        label = meal_type_label(meal["meal_type"])
-        text = f"[{meal['id']}] {label}: {meal['dish_name']}"
-        if meal["recipe_id"]:
-            text += f"\nRecipe ID: {meal['recipe_id']}"
+    cal_link = calendar_link.build_meal_reminder_link(meal["meal_type"], meal["date"], meal["dish_name"])
+    rows = [[
+        InlineKeyboardButton("CAL", url=cal_link),
+        InlineKeyboardButton("DEL", callback_data=f"removeconfirm_{meal['id']}"),
+        InlineKeyboardButton("SUBS", callback_data=f"replaceask_{meal['id']}"),
+    ]]
+    if link_buttons:
+        rows.append(link_buttons)
 
-        cal_link = calendar_link.build_meal_reminder_link(meal["meal_type"], meal["date"], meal["dish_name"])
-        rows = [[
-            InlineKeyboardButton("CAL", url=cal_link),
-            InlineKeyboardButton("DEL", callback_data=f"removeconfirm_{meal['id']}"),
-            InlineKeyboardButton("SUBS", callback_data=f"replaceask_{meal['id']}"),
-        ]]
+    await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
 
-        link_row = []
-        recipe = recipe_service.get_recipe(conn, meal["recipe_id"]) if meal["recipe_id"] else None
-        if recipe is not None:
-            for column, label in _LANGUAGE_LINK_COLUMNS:
-                link = recipe[column]
-                if link and link.startswith(("http://", "https://")):
-                    link_row.append(InlineKeyboardButton(label, url=link))
-        elif meal["recipe_link"] and meal["recipe_link"].startswith(("http://", "https://")):
-            link_row.append(InlineKeyboardButton("Link", url=meal["recipe_link"]))
-        if link_row:
-            rows.append(link_row)
 
-        keyboard = InlineKeyboardMarkup(rows)
-        await update.message.reply_text(text, reply_markup=keyboard)
-        shown += 1
-
-    if truncated:
-        await update.message.reply_text(
-            f"Showing the next {max_meals} meals only. Use /week for the full calendar week."
-        )
+@owner_only
+async def handle_agenda_empty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.callback_query.answer("No meal planned for this slot.", show_alert=True)

@@ -119,6 +119,12 @@ def build_application() -> Application:
 
     application.add_handler(CallbackQueryHandler(recipe_detail.handle_recipe, pattern=r"^recipe_\d+$"))
     application.add_handler(
+        CallbackQueryHandler(plan_query.handle_agenda_slot, pattern=r"^agendaslot_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(plan_query.handle_agenda_empty, pattern=r"^agendaempty$")
+    )
+    application.add_handler(
         CallbackQueryHandler(substitution.handle_substitute_request, pattern=r"^substitute_\d+$")
     )
     application.add_handler(
